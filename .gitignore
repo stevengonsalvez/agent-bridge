@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.turbo/
+*.log
+.DS_Store
+coverage/
+.env
+.env.local
+.env.*
+*.tsbuildinfo
+
+# Logs and session artifacts
+logs/
+
+# Claude session state (local only)
+.claude/session/
+.claude/settings.local.json
