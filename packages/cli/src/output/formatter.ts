@@ -10,6 +10,7 @@ import type {
   CliConfig,
   CapabilitiesMessage,
   DomSnapshotMessage,
+  UiTreeItem,
 } from '@debug-bridge/types';
 
 export type OutputFormatter = {
@@ -20,6 +21,8 @@ export type OutputFormatter = {
   commandSent: (cmd: CommandMessage) => void;
   commandResult: (msg: CommandResultMessage) => void;
   info: (message: string) => void;
+  uiTreeFormatted: (items: UiTreeItem[]) => void;
+  findResults: (items: UiTreeItem[], query: string) => void;
 };
 
 export function createOutputFormatter(jsonMode: boolean): OutputFormatter {
@@ -103,21 +106,28 @@ function createJsonFormatter(): OutputFormatter {
     info: (message) => {
       out({ event: 'info', message });
     },
+    uiTreeFormatted: (items) => {
+      out({ event: 'ui_tree_formatted', items });
+    },
+    findResults: (items, query) => {
+      out({ event: 'find_results', query, count: items.length, items });
+    },
   };
 }
 
 function createHumanFormatter(): OutputFormatter {
   return {
     serverStarted: (config) => {
-      console.log('\n Debug Bridge v0.1.0');
+      console.log('\n🔌 Debug Bridge v0.1.0');
       console.log('━'.repeat(50));
       console.log(`Server: ws://${config.host}:${config.port}/debug`);
       console.log(`Session: ${config.session}`);
       console.log('━'.repeat(50));
-      console.log('\nWaiting for app connection...\n');
+      console.log('\nWaiting for app connection...');
+      console.log('Type "help" for available commands.\n');
     },
     appConnected: (hello) => {
-      console.log(`✓ Connected: ${hello.appName ?? 'Unknown App'} ${hello.appVersion ?? ''}`);
+      console.log(`\n✓ Connected: ${hello.appName ?? 'Unknown App'} ${hello.appVersion ?? ''}`);
       console.log(`  URL: ${hello.url}`);
       console.log(`  Viewport: ${hello.viewport.width}x${hello.viewport.height}\n`);
     },
@@ -127,27 +137,44 @@ function createHumanFormatter(): OutputFormatter {
     telemetry: (msg) => {
       if (msg.type === 'ui_tree') {
         const uitree = msg as UiTreeMessage;
-        console.log(`[ui_tree] ${uitree.items.length} interactive elements`);
+        console.log(`\n[ui_tree] ${uitree.items.length} elements`);
+        formatUiTree(uitree.items);
       } else if (msg.type === 'state_update') {
         const state = msg as StateUpdateMessage;
-        console.log(`[state] ${state.scope}:`, JSON.stringify(state.state));
+        console.log(`[state] ${state.scope}:`, JSON.stringify(state.state).substring(0, 100));
       } else if (msg.type === 'console') {
         const consoleMsg = msg as ConsoleMessage;
-        console.log(`[console.${consoleMsg.level}]`, consoleMsg.args.join(' '));
+        const level = consoleMsg.level;
+        const prefix =
+          level === 'error' ? '❌' : level === 'warn' ? '⚠️' : level === 'debug' ? '🔍' : '📝';
+        console.log(`${prefix} [${level}]`, consoleMsg.args.slice(0, 2).join(' ').substring(0, 100));
       } else if (msg.type === 'error') {
         const errorMsg = msg as ErrorMessage;
-        console.log(`[error] ${errorMsg.message}`);
+        console.log(`❌ [error] ${errorMsg.message}`);
       } else if (msg.type === 'capabilities') {
         const caps = msg as CapabilitiesMessage;
         console.log(`[capabilities]`, caps.capabilities.join(', '));
+      } else if (msg.type === 'dom_snapshot') {
+        const snapshot = msg as DomSnapshotMessage;
+        console.log(`[dom_snapshot] ${(snapshot.html?.length ?? 0).toLocaleString()} bytes`);
       }
     },
     commandSent: (cmd) => {
-      console.log(`> ${cmd.type} (${cmd.requestId})`);
+      const cmdType = cmd.type as string;
+      // Don't log request commands, wait for response
+      if (!cmdType.startsWith('request_')) {
+        console.log(`→ ${cmdType}`);
+      }
     },
     commandResult: (msg) => {
       if (msg.success) {
-        console.log(`✓ ${msg.requestType} completed (${msg.duration}ms)`);
+        let resultInfo = '';
+        if (msg.result !== undefined) {
+          const resultStr =
+            typeof msg.result === 'string' ? msg.result : JSON.stringify(msg.result);
+          resultInfo = `: ${resultStr.substring(0, 80)}${resultStr.length > 80 ? '...' : ''}`;
+        }
+        console.log(`✓ ${msg.requestType} (${msg.duration}ms)${resultInfo}`);
       } else {
         console.log(`✗ ${msg.requestType} failed: ${msg.error?.message}`);
       }
@@ -155,5 +182,55 @@ function createHumanFormatter(): OutputFormatter {
     info: (message) => {
       console.log(message);
     },
+    uiTreeFormatted: (items) => {
+      console.log(`\n[ui_tree] ${items.length} elements`);
+      formatUiTree(items);
+    },
+    findResults: (items, query) => {
+      if (items.length === 0) {
+        console.log(`\nNo matches found for "${query}"`);
+        console.log('Tip: Run "ui" first to refresh the element cache.');
+        return;
+      }
+      console.log(`\nFound ${items.length} match${items.length === 1 ? '' : 'es'} for "${query}":`);
+      formatUiTree(items);
+    },
   };
+}
+
+function formatUiTree(items: UiTreeItem[]): void {
+  if (items.length === 0) {
+    console.log('  (no elements)');
+    return;
+  }
+
+  items.forEach((item, i) => {
+    const num = String(i + 1).padStart(2, ' ');
+    const role = (item.role || 'element').padEnd(10);
+    const id = truncate(item.stableId || '-', 45);
+
+    // Build description from available info
+    let desc = '';
+    if (item.text) {
+      desc = `"${truncate(item.text, 30)}"`;
+    } else if (item.label) {
+      desc = `[${truncate(item.label, 30)}]`;
+    } else if (item.meta?.placeholder) {
+      desc = `placeholder: "${truncate(item.meta.placeholder, 25)}"`;
+    } else if (item.meta?.type) {
+      desc = `type: ${item.meta.type}`;
+    } else if (item.meta?.href) {
+      desc = `→ ${truncate(item.meta.href, 30)}`;
+    }
+
+    // Add visibility indicator
+    const visibility = item.visible === false ? ' (hidden)' : '';
+
+    console.log(`  ${num}. [${role}] ${id}  ${desc}${visibility}`);
+  });
+}
+
+function truncate(str: string, max: number): string {
+  if (str.length <= max) return str;
+  return str.substring(0, max - 1) + '…';
 }
