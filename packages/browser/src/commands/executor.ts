@@ -99,11 +99,15 @@ export class CommandExecutor {
     let el: Element | null = null;
 
     if (target.stableId) {
-      // Try regular DOM first
-      el =
-        document.querySelector(`[data-testid="${target.stableId}"]`) ??
-        document.getElementById(target.stableId);
-      // If not found, search in shadow roots
+      // Try debug-bridge-id first (set by UI tree builder)
+      el = this.deepQuerySelector(`[data-debug-bridge-id="${target.stableId}"]`);
+      // Fall back to data-testid and id attributes
+      if (!el) {
+        el =
+          document.querySelector(`[data-testid="${target.stableId}"]`) ??
+          document.getElementById(target.stableId);
+      }
+      // If not found, search in shadow roots for testid/id
       if (!el) {
         el = this.deepQuerySelector(`[data-testid="${target.stableId}"]`) ??
              this.deepQuerySelector(`#${target.stableId}`);

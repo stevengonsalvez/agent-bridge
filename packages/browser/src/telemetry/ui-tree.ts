@@ -65,6 +65,10 @@ export class UiTreeBuilder {
     const visible = style.display !== 'none' && style.visibility !== 'hidden';
 
     const stableId = getStableId?.(el) ?? this.generateStableId(el);
+
+    // Store stableId on element for later lookup by commands
+    el.setAttribute('data-debug-bridge-id', stableId);
+
     const role = el.getAttribute('role') ?? el.tagName.toLowerCase();
     const text = this.getVisibleText(el);
 
