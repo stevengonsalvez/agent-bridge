@@ -99,17 +99,28 @@ export class CommandExecutor {
     let el: Element | null = null;
 
     if (target.stableId) {
+      // Try regular DOM first
       el =
         document.querySelector(`[data-testid="${target.stableId}"]`) ??
         document.getElementById(target.stableId);
+      // If not found, search in shadow roots
+      if (!el) {
+        el = this.deepQuerySelector(`[data-testid="${target.stableId}"]`) ??
+             this.deepQuerySelector(`#${target.stableId}`);
+      }
     }
     if (!el && target.selector) {
       el = document.querySelector(target.selector);
+      // If not found, search in shadow roots
+      if (!el) {
+        el = this.deepQuerySelector(target.selector);
+      }
     }
     if (!el && target.text) {
-      const all = document.querySelectorAll('button, a, [role="button"]');
+      const all = this.deepQuerySelectorAll('button, a, [role="button"], input');
       for (const candidate of all) {
-        if (candidate.textContent?.includes(target.text)) {
+        const text = candidate.textContent || (candidate as HTMLInputElement).placeholder;
+        if (text?.includes(target.text)) {
           el = candidate;
           break;
         }
@@ -118,6 +129,51 @@ export class CommandExecutor {
 
     if (!el) throw { code: 'TARGET_NOT_FOUND', message: `Not found: ${JSON.stringify(target)}` };
     return el;
+  }
+
+  /**
+   * Query selector that traverses into shadow roots
+   */
+  private deepQuerySelector(selector: string): Element | null {
+    // Try regular DOM first
+    const el = document.querySelector(selector);
+    if (el) return el;
+
+    // Search in shadow roots
+    const results = this.deepQuerySelectorAll(selector);
+    return results[0] || null;
+  }
+
+  /**
+   * Query all matching elements including those in shadow roots
+   */
+  private deepQuerySelectorAll(selector: string): Element[] {
+    const results: Element[] = [];
+    this.queryAllShadowRoots(document, selector, (el) => results.push(el));
+    return results;
+  }
+
+  /**
+   * Recursively query from a root and all shadow roots within
+   */
+  private queryAllShadowRoots(
+    root: Document | ShadowRoot,
+    selector: string,
+    callback: (el: Element) => void
+  ): void {
+    // Query this root
+    const elements = root.querySelectorAll(selector);
+    for (const el of elements) {
+      callback(el);
+    }
+
+    // Find all elements with shadow roots and recurse
+    const allElements = root.querySelectorAll('*');
+    for (const el of allElements) {
+      if (el.shadowRoot) {
+        this.queryAllShadowRoots(el.shadowRoot, selector, callback);
+      }
+    }
   }
 
   private click(target: { stableId?: string; selector?: string; text?: string }): void {

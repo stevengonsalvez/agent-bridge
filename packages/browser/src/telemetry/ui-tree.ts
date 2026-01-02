@@ -18,15 +18,42 @@ const INTERACTIVE_SELECTORS = [
 
 export class UiTreeBuilder {
   static build(getStableId?: (el: Element) => string | null): UiTreeItem[] {
-    const elements = document.querySelectorAll(INTERACTIVE_SELECTORS);
     const items: UiTreeItem[] = [];
+    const seen = new Set<Element>();
 
-    for (const el of elements) {
+    // Query from document and all shadow roots
+    this.queryAllRoots(document, INTERACTIVE_SELECTORS, (el) => {
+      if (seen.has(el)) return;
+      seen.add(el);
       const item = this.buildItem(el, getStableId);
       if (item) items.push(item);
-    }
+    });
 
     return items;
+  }
+
+  /**
+   * Recursively query elements from document and all shadow roots.
+   * This handles Ionic, Stencil, and other Shadow DOM-based frameworks.
+   */
+  private static queryAllRoots(
+    root: Document | ShadowRoot,
+    selector: string,
+    callback: (el: Element) => void
+  ): void {
+    // Query this root
+    const elements = root.querySelectorAll(selector);
+    for (const el of elements) {
+      callback(el);
+    }
+
+    // Find all elements with shadow roots and recurse
+    const allElements = root.querySelectorAll('*');
+    for (const el of allElements) {
+      if (el.shadowRoot) {
+        this.queryAllRoots(el.shadowRoot, selector, callback);
+      }
+    }
   }
 
   private static buildItem(
@@ -94,13 +121,18 @@ export class UiTreeBuilder {
 
     const path: string[] = [];
     let current: Element | null = el;
+    let inShadow = false;
 
-    while (current && current !== document.body) {
+    while (current) {
+      // Check if we've reached document.body
+      if (current === document.body) break;
+
       let selector = current.tagName.toLowerCase();
       if (current.id) {
         path.unshift(`#${current.id}`);
         break;
       }
+
       const parent = current.parentElement;
       if (parent) {
         const siblings = Array.from(parent.children).filter((c) => c.tagName === current!.tagName);
@@ -108,9 +140,23 @@ export class UiTreeBuilder {
           const index = siblings.indexOf(current) + 1;
           selector += `:nth-of-type(${index})`;
         }
+        path.unshift(selector);
+        current = parent;
+      } else {
+        // No parent element - might be at shadow root boundary
+        const rootNode = current.getRootNode();
+        if (rootNode instanceof ShadowRoot) {
+          // Mark that we crossed a shadow boundary and continue from the host
+          path.unshift(selector);
+          path.unshift('::shadow');
+          current = rootNode.host;
+          inShadow = true;
+        } else {
+          // Reached document root
+          path.unshift(selector);
+          break;
+        }
       }
-      path.unshift(selector);
-      current = parent;
     }
 
     return path.join(' > ');
