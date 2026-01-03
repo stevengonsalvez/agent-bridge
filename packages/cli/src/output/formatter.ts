@@ -181,8 +181,7 @@ function createHumanFormatter(): OutputFormatter {
           fs.writeFileSync(filename, base64Data, 'base64');
           console.log(`[screenshot] ${screenshot.width}x${screenshot.height} saved to ${filename}`);
         } else {
-          console.log(`[screenshot] ${screenshot.width}x${screenshot.height} (html2canvas not available)`);
-          console.log('  Tip: Add <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>');
+          console.log(`[screenshot] ${screenshot.width}x${screenshot.height} (capture failed)`);
         }
       }
     },

@@ -1,5 +1,6 @@
 import type { CommandMessage, DebugBridgeConfig, BridgeMessage } from '@debug-bridge/types';
 import { UiTreeBuilder } from '../telemetry/ui-tree';
+import html2canvas from 'html2canvas';
 
 type Send = (msg: Partial<BridgeMessage> & { type: string }) => void;
 
@@ -60,7 +61,7 @@ export class CommandExecutor {
           });
           return;
         case 'request_screenshot':
-          this.captureScreenshot(cmd.requestId);
+          await this.captureScreenshot(cmd.requestId);
           return;
         case 'request_state':
           // Built-in browser state (always available)
@@ -308,49 +309,43 @@ export class CommandExecutor {
 
   /**
    * Capture a screenshot of the current viewport using html2canvas
-   * Falls back to a simple placeholder if html2canvas is not available
+   * Note: Some modern CSS features (oklch, color-mix) may not render correctly
    */
   private async captureScreenshot(requestId: string): Promise<void> {
     try {
-      // Try to use html2canvas if available
-      const html2canvas = (window as unknown as { html2canvas?: (el: Element, opts?: object) => Promise<HTMLCanvasElement> }).html2canvas;
-
-      if (html2canvas) {
-        const canvas = await html2canvas(document.body, {
+      // Wrap html2canvas in Promise.resolve to catch synchronous errors too
+      const canvas = await Promise.resolve().then(() =>
+        html2canvas(document.body, {
           logging: false,
           useCORS: true,
           allowTaint: true,
-        });
-        const data = canvas.toDataURL('image/png');
-        this.send({
-          type: 'screenshot',
-          requestId,
-          data,
-          width: canvas.width,
-          height: canvas.height,
-          timestamp: Date.now(),
-        });
-      } else {
-        // Fallback: Return viewport info without actual image
-        // The CLI can instruct users to include html2canvas for full support
-        this.send({
-          type: 'screenshot',
-          requestId,
-          data: '', // Empty - indicates screenshot not available
-          width: window.innerWidth,
-          height: window.innerHeight,
-          timestamp: Date.now(),
-        });
-      }
-    } catch (e) {
-      const err = e as Error;
+          foreignObjectRendering: false,
+          removeContainer: true,
+          ignoreElements: (element) => {
+            return element.classList?.contains('debug-bridge-ignore') ?? false;
+          },
+        })
+      );
+
+      const data = canvas.toDataURL('image/png');
       this.send({
-        type: 'command_result',
+        type: 'screenshot',
         requestId,
-        requestType: 'request_screenshot',
-        success: false,
-        error: { code: 'SCREENSHOT_FAILED', message: err.message },
-        duration: 0,
+        data,
+        width: canvas.width,
+        height: canvas.height,
+        timestamp: Date.now(),
+      });
+    } catch {
+      // html2canvas failed (likely due to modern CSS like oklch())
+      // Return viewport dimensions without image data
+      this.send({
+        type: 'screenshot',
+        requestId,
+        data: '',
+        width: window.innerWidth,
+        height: window.innerHeight,
+        timestamp: Date.now(),
       });
     }
   }
