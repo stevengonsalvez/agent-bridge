@@ -59,13 +59,34 @@ export class CommandExecutor {
             html: document.documentElement.outerHTML,
           });
           return;
+        case 'request_screenshot':
+          this.captureScreenshot(cmd.requestId);
+          return;
         case 'request_state':
-          if (this.config.getCustomState) {
-            const state = this.config.getCustomState();
-            if (cmd.scope && state[cmd.scope]) {
-              this.send({ type: 'state_update', scope: cmd.scope, state: state[cmd.scope] });
-            } else {
-              for (const [scope, value] of Object.entries(state)) {
+          // Built-in browser state (always available)
+          const browserState = this.getBrowserState();
+
+          if (cmd.scope) {
+            // Specific scope requested
+            if (browserState[cmd.scope]) {
+              this.send({ type: 'state_update', scope: cmd.scope, state: browserState[cmd.scope] });
+            }
+            // Also check custom state
+            if (this.config.getCustomState) {
+              const customState = this.config.getCustomState();
+              if (customState[cmd.scope]) {
+                this.send({ type: 'state_update', scope: cmd.scope, state: customState[cmd.scope] });
+              }
+            }
+          } else {
+            // Send all browser state
+            for (const [scope, value] of Object.entries(browserState)) {
+              this.send({ type: 'state_update', scope, state: value });
+            }
+            // Send all custom state
+            if (this.config.getCustomState) {
+              const customState = this.config.getCustomState();
+              for (const [scope, value] of Object.entries(customState)) {
                 this.send({ type: 'state_update', scope, state: value });
               }
             }
@@ -220,5 +241,117 @@ export class CommandExecutor {
   private focus(target: { stableId?: string; selector?: string }): void {
     const el = this.resolveTarget(target) as HTMLElement;
     el.focus();
+  }
+
+  /**
+   * Get built-in browser state (cookies, storage, navigator, etc.)
+   */
+  private getBrowserState(): Record<string, unknown> {
+    return {
+      cookies: this.parseCookies(),
+      localStorage: this.getStorageContents(localStorage),
+      sessionStorage: this.getStorageContents(sessionStorage),
+      location: {
+        href: window.location.href,
+        origin: window.location.origin,
+        pathname: window.location.pathname,
+        search: window.location.search,
+        hash: window.location.hash,
+        host: window.location.host,
+      },
+      navigator: {
+        userAgent: navigator.userAgent,
+        language: navigator.language,
+        languages: [...navigator.languages],
+        online: navigator.onLine,
+        cookieEnabled: navigator.cookieEnabled,
+        platform: navigator.platform,
+      },
+      screen: {
+        width: window.screen.width,
+        height: window.screen.height,
+        availWidth: window.screen.availWidth,
+        availHeight: window.screen.availHeight,
+        colorDepth: window.screen.colorDepth,
+        pixelRatio: window.devicePixelRatio,
+      },
+      viewport: {
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+        scrollX: Math.round(window.scrollX),
+        scrollY: Math.round(window.scrollY),
+      },
+    };
+  }
+
+  private parseCookies(): Record<string, string> {
+    const cookies: Record<string, string> = {};
+    document.cookie.split(';').forEach((cookie) => {
+      const [key, ...valueParts] = cookie.trim().split('=');
+      if (key) {
+        cookies[key] = valueParts.join('=');
+      }
+    });
+    return cookies;
+  }
+
+  private getStorageContents(storage: Storage): Record<string, string | null> {
+    const contents: Record<string, string | null> = {};
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      if (key) {
+        contents[key] = storage.getItem(key);
+      }
+    }
+    return contents;
+  }
+
+  /**
+   * Capture a screenshot of the current viewport using html2canvas
+   * Falls back to a simple placeholder if html2canvas is not available
+   */
+  private async captureScreenshot(requestId: string): Promise<void> {
+    try {
+      // Try to use html2canvas if available
+      const html2canvas = (window as unknown as { html2canvas?: (el: Element, opts?: object) => Promise<HTMLCanvasElement> }).html2canvas;
+
+      if (html2canvas) {
+        const canvas = await html2canvas(document.body, {
+          logging: false,
+          useCORS: true,
+          allowTaint: true,
+        });
+        const data = canvas.toDataURL('image/png');
+        this.send({
+          type: 'screenshot',
+          requestId,
+          data,
+          width: canvas.width,
+          height: canvas.height,
+          timestamp: Date.now(),
+        });
+      } else {
+        // Fallback: Return viewport info without actual image
+        // The CLI can instruct users to include html2canvas for full support
+        this.send({
+          type: 'screenshot',
+          requestId,
+          data: '', // Empty - indicates screenshot not available
+          width: window.innerWidth,
+          height: window.innerHeight,
+          timestamp: Date.now(),
+        });
+      }
+    } catch (e) {
+      const err = e as Error;
+      this.send({
+        type: 'command_result',
+        requestId,
+        requestType: 'request_screenshot',
+        success: false,
+        error: { code: 'SCREENSHOT_FAILED', message: err.message },
+        duration: 0,
+      });
+    }
   }
 }

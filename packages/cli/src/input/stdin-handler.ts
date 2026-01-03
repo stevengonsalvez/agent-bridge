@@ -163,6 +163,10 @@ function parseCommand(input: string): ParseResult {
     case 'dom':
       return { type: 'remote', cmd: { ...base, type: 'request_dom_snapshot' } };
 
+    case 'screenshot':
+    case 'ss':
+      return { type: 'remote', cmd: { ...base, type: 'request_screenshot' } };
+
     case 'state':
       return { type: 'remote', cmd: { ...base, type: 'request_state', scope: parts[1] } };
 
@@ -210,13 +214,14 @@ Commands:
   type <id> <txt> Type text into element
   eval <code>     Execute JavaScript in browser
   snapshot        Get full DOM HTML
-  state [scope]   Get application state
+  screenshot      Capture viewport screenshot
+  state [scope]   Get application state (cookies, localStorage, etc)
   navigate <url>  Navigate to URL
   focus <id>      Focus an element
   scroll <x> <y>  Scroll to position
   clear           Clear console
   help            Show this help
 
-Aliases: tree=ui, js=eval, dom=snapshot, go=navigate, search=find, ?=help
+Aliases: tree=ui, js=eval, dom=snapshot, ss=screenshot, go=navigate, search=find, ?=help
 `);
 }

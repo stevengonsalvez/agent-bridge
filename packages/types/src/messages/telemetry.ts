@@ -40,3 +40,12 @@ export type StateUpdateMessage = BaseMessage & {
   scope: string;
   state: unknown;
 };
+
+export type ScreenshotMessage = BaseMessage & {
+  type: 'screenshot';
+  requestId?: string;
+  data: string; // Base64 encoded PNG
+  width: number;
+  height: number;
+  timestamp: number;
+};

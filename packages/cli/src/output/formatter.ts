@@ -10,8 +10,10 @@ import type {
   CliConfig,
   CapabilitiesMessage,
   DomSnapshotMessage,
+  ScreenshotMessage,
   UiTreeItem,
 } from '@debug-bridge/types';
+import * as fs from 'fs';
 
 export type OutputFormatter = {
   serverStarted: (config: CliConfig) => void;
@@ -85,6 +87,20 @@ function createJsonFormatter(): OutputFormatter {
       } else if (msg.type === 'dom_snapshot') {
         const snapshot = msg as DomSnapshotMessage;
         out({ event: 'telemetry', type: 'dom_snapshot', length: snapshot.html?.length ?? 0 });
+      } else if (msg.type === 'screenshot') {
+        const screenshot = msg as ScreenshotMessage;
+        const filename = `screenshot-${Date.now()}.png`;
+        if (screenshot.data) {
+          const base64Data = screenshot.data.replace(/^data:image\/png;base64,/, '');
+          fs.writeFileSync(filename, base64Data, 'base64');
+        }
+        out({
+          event: 'telemetry',
+          type: 'screenshot',
+          width: screenshot.width,
+          height: screenshot.height,
+          file: screenshot.data ? filename : null,
+        });
       } else if (msg.type === 'capabilities') {
         const caps = msg as CapabilitiesMessage;
         out({ event: 'telemetry', type: 'capabilities', capabilities: caps.capabilities });
@@ -157,6 +173,17 @@ function createHumanFormatter(): OutputFormatter {
       } else if (msg.type === 'dom_snapshot') {
         const snapshot = msg as DomSnapshotMessage;
         console.log(`[dom_snapshot] ${(snapshot.html?.length ?? 0).toLocaleString()} bytes`);
+      } else if (msg.type === 'screenshot') {
+        const screenshot = msg as ScreenshotMessage;
+        if (screenshot.data) {
+          const filename = `screenshot-${Date.now()}.png`;
+          const base64Data = screenshot.data.replace(/^data:image\/png;base64,/, '');
+          fs.writeFileSync(filename, base64Data, 'base64');
+          console.log(`[screenshot] ${screenshot.width}x${screenshot.height} saved to ${filename}`);
+        } else {
+          console.log(`[screenshot] ${screenshot.width}x${screenshot.height} (html2canvas not available)`);
+          console.log('  Tip: Add <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>');
+        }
       }
     },
     commandSent: (cmd) => {

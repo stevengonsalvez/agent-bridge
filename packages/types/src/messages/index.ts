@@ -12,6 +12,7 @@ import type {
   ConsoleMessage,
   ErrorMessage,
   StateUpdateMessage,
+  ScreenshotMessage,
 } from './telemetry';
 import type { CommandMessage } from './commands';
 import type { CommandResultMessage } from './results';
@@ -25,5 +26,6 @@ export type BridgeMessage =
   | ConsoleMessage
   | ErrorMessage
   | StateUpdateMessage
+  | ScreenshotMessage
   | CommandMessage
   | CommandResultMessage;

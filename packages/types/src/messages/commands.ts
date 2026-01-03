@@ -65,6 +65,12 @@ export type RequestStateCommand = CommandBase & {
   scope?: string;
 };
 
+export type RequestScreenshotCommand = CommandBase & {
+  type: 'request_screenshot';
+  selector?: string;
+  fullPage?: boolean;
+};
+
 export type CommandMessage =
   | ClickCommand
   | TypeCommand
@@ -76,6 +82,7 @@ export type CommandMessage =
   | FocusCommand
   | RequestUiTreeCommand
   | RequestDomSnapshotCommand
-  | RequestStateCommand;
+  | RequestStateCommand
+  | RequestScreenshotCommand;
 
 export type CommandType = CommandMessage['type'];
