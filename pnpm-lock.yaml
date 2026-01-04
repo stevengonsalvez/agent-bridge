@@ -66,9 +66,9 @@ importers:
       '@debug-bridge/types':
         specifier: workspace:*
         version: link:../types
-      html2canvas:
-        specifier: ^1.4.1
-        version: 1.4.1
+      html2canvas-pro:
+        specifier: ^1.6.3
+        version: 1.6.3
     devDependencies:
       tsup:
         specifier: ^8.3.5
@@ -790,9 +790,9 @@ packages:
     resolution: {integrity: sha512-3hN7NaskYvMDLQY55gnW3NQ+mesEAepTqlg+VEbj7zzqEMBVNhzcGYYeqFo/TlYz6eQiFcp1HcsCZO+nGgS8zg==}
     engines: {node: '>=6.9.0'}
 
-  html2canvas@1.4.1:
-    resolution: {integrity: sha512-fPU6BHNpsyIhr8yyMpTLLxAbkaK8ArIBcmZIRiBLiDhjeqvXolaEmDGmELFuX9I4xDcaKKcJl+TKZLqruBbmWA==}
-    engines: {node: '>=8.0.0'}
+  html2canvas-pro@1.6.3:
+    resolution: {integrity: sha512-3Xi7ehorkDBV5Lrm+mpmPzjZUFVqKdH40QbEd8KYdlIaAr8OBpqZ72ZWKONIfdMPRfR+er/KedF3cjN64bmXNw==}
+    engines: {node: '>=16.0.0'}
 
   joycon@3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
@@ -1685,7 +1685,7 @@ snapshots:
 
   gensync@1.0.0-beta.2: {}
 
-  html2canvas@1.4.1:
+  html2canvas-pro@1.6.3:
     dependencies:
       css-line-break: 2.1.0
       text-segmentation: 1.0.3

@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "@debug-bridge/types": "workspace:*",
-    "html2canvas": "^1.4.1"
+    "html2canvas-pro": "^1.6.3"
   },
   "devDependencies": {
     "tsup": "^8.3.5",
