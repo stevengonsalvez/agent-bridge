@@ -1,6 +1,6 @@
 {
   "name": "debug-bridge-cli",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "CLI for debug-bridge - WebSocket server for AI agent debugging",
   "author": "stevengonsalvez",
   "license": "MIT",
