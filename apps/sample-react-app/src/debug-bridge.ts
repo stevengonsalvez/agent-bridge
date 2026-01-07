@@ -1,4 +1,4 @@
-import { createDebugBridge } from '@debug-bridge/browser';
+import { createDebugBridge } from 'debug-bridge-browser';
 import { useStore } from './store';
 
 export function initDebugBridge() {

@@ -29,7 +29,7 @@ importers:
 
   apps/sample-react-app:
     dependencies:
-      '@debug-bridge/browser':
+      debug-bridge-browser:
         specifier: workspace:*
         version: link:../../packages/browser
       react:
@@ -63,7 +63,7 @@ importers:
 
   packages/browser:
     dependencies:
-      '@debug-bridge/types':
+      debug-bridge-types:
         specifier: workspace:*
         version: link:../types
       html2canvas-pro:
@@ -79,12 +79,12 @@ importers:
 
   packages/cli:
     dependencies:
-      '@debug-bridge/types':
-        specifier: workspace:*
-        version: link:../types
       commander:
         specifier: ^12.1.0
         version: 12.1.0
+      debug-bridge-types:
+        specifier: workspace:*
+        version: link:../types
       ws:
         specifier: ^8.18.0
         version: 8.18.3

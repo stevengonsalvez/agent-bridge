@@ -3,7 +3,7 @@ import { Command } from 'commander';
 import { startServer } from '../server/websocket-server';
 import { createOutputFormatter } from '../output/formatter';
 import { setupStdinHandler, updateCachedUiTree } from '../input/stdin-handler';
-import type { CliConfig, UiTreeMessage, UiTreeItem } from '@debug-bridge/types';
+import type { CliConfig, UiTreeMessage, UiTreeItem } from 'debug-bridge-types';
 
 function printHelp(): void {
   console.log(`

@@ -12,7 +12,7 @@ import type {
   DomSnapshotMessage,
   ScreenshotMessage,
   UiTreeItem,
-} from '@debug-bridge/types';
+} from 'debug-bridge-types';
 import * as fs from 'fs';
 
 export type OutputFormatter = {

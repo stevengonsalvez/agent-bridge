@@ -1,6 +1,6 @@
 import * as readline from 'readline';
-import type { CommandMessage, UiTreeItem } from '@debug-bridge/types';
-import { PROTOCOL_VERSION } from '@debug-bridge/types';
+import type { CommandMessage, UiTreeItem } from 'debug-bridge-types';
+import { PROTOCOL_VERSION } from 'debug-bridge-types';
 
 // Cached UI tree for local find command
 let cachedUiTree: UiTreeItem[] = [];

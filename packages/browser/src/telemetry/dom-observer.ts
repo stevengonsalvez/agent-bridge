@@ -1,4 +1,4 @@
-import type { DomMutation } from '@debug-bridge/types';
+import type { DomMutation } from 'debug-bridge-types';
 
 export class DomObserver {
   private observer: MutationObserver | null = null;

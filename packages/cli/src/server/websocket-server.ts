@@ -5,7 +5,7 @@ import type {
   CommandMessage,
   CommandResultMessage,
   CliConfig,
-} from '@debug-bridge/types';
+} from 'debug-bridge-types';
 
 type ServerCallbacks = {
   onAppConnected: (hello: HelloMessage) => void;

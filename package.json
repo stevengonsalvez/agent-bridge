@@ -8,7 +8,8 @@
     "test": "turbo run test",
     "type-check": "turbo run type-check",
     "clean": "turbo run clean && rm -rf node_modules",
-    "format": "prettier --write \"**/*.{ts,tsx,json,md}\""
+    "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
+    "publish:all": "pnpm -r publish --access public"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

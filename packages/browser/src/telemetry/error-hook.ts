@@ -1,4 +1,4 @@
-import type { ErrorMessage } from '@debug-bridge/types';
+import type { ErrorMessage } from 'debug-bridge-types';
 
 type ErrorCallback = (
   msg: Omit<ErrorMessage, 'protocolVersion' | 'sessionId' | 'timestamp'>

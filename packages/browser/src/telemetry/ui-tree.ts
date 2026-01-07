@@ -1,4 +1,4 @@
-import type { UiTreeItem } from '@debug-bridge/types';
+import type { UiTreeItem } from 'debug-bridge-types';
 
 const INTERACTIVE_SELECTORS = [
   'a[href]',

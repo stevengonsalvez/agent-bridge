@@ -3,8 +3,8 @@ import type {
   BridgeMessage,
   CommandMessage,
   Capability,
-} from '@debug-bridge/types';
-import { PROTOCOL_VERSION } from '@debug-bridge/types';
+} from 'debug-bridge-types';
+import { PROTOCOL_VERSION } from 'debug-bridge-types';
 import { DomObserver } from './telemetry/dom-observer';
 import { UiTreeBuilder } from './telemetry/ui-tree';
 import { ConsoleHook } from './telemetry/console-hook';

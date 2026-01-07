@@ -1,4 +1,4 @@
-import type { CommandMessage, DebugBridgeConfig, BridgeMessage } from '@debug-bridge/types';
+import type { CommandMessage, DebugBridgeConfig, BridgeMessage } from 'debug-bridge-types';
 import { UiTreeBuilder } from '../telemetry/ui-tree';
 import html2canvas from 'html2canvas-pro';
 

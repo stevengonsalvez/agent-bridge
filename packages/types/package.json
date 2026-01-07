@@ -1,6 +1,17 @@
 {
-  "name": "@debug-bridge/types",
+  "name": "debug-bridge-types",
   "version": "0.1.0",
+  "description": "TypeScript types and protocol definitions for debug-bridge",
+  "author": "stevengonsalvez",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stevengonsalvez/agent-bridge"
+  },
+  "keywords": ["debug", "bridge", "ai", "agent", "types", "typescript"],
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

@@ -1,6 +1,17 @@
 {
-  "name": "@debug-bridge/cli",
+  "name": "debug-bridge-cli",
   "version": "0.1.0",
+  "description": "CLI for debug-bridge - WebSocket server for AI agent debugging",
+  "author": "stevengonsalvez",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stevengonsalvez/agent-bridge"
+  },
+  "keywords": ["debug", "bridge", "ai", "agent", "cli", "websocket", "automation"],
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "bin": {
     "debug-bridge": "./dist/bin/cli.js"
@@ -22,7 +33,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@debug-bridge/types": "workspace:*",
+    "debug-bridge-types": "workspace:*",
     "commander": "^12.1.0",
     "ws": "^8.18.0"
   },
