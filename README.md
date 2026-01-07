@@ -146,9 +146,76 @@ const bridge = createDebugBridge({
 | `clear` | Clear console |
 | `help` / `?` | Show help |
 
-## Agent Integration
+## AI Agent Integration
 
-For programmatic control (e.g., from Claude Code or other AI agents), connect via WebSocket:
+Debug Bridge includes a skill/plugin system for seamless integration with AI coding assistants.
+
+### Installation for AI Assistants
+
+#### Claude Code (Recommended)
+
+**Method 1: From GitHub Marketplace (Recommended)**
+
+```bash
+# 1. Add the agent-bridge marketplace
+/plugin marketplace add stevengonsalvez/agent-bridge
+
+# 2. Install the debug-bridge plugin
+/plugin install debug-bridge@agent-bridge-marketplace
+```
+
+**Method 2: Local Development/Testing**
+
+```bash
+# Use during development or testing
+claude --plugin-dir /path/to/agent-bridge
+```
+
+**Method 3: Manual Installation**
+
+```bash
+# Clone and manually copy
+git clone https://github.com/stevengonsalvez/agent-bridge.git
+cp -r agent-bridge/.claude-plugin ~/.claude/plugins/debug-bridge
+cp -r agent-bridge/skills ~/.claude/plugins/debug-bridge/
+```
+
+After installation, trigger the skill by saying:
+- "Debug the app"
+- "Inspect the UI"
+- "Take a screenshot of the page"
+- "Click the login button"
+- "Automate this workflow"
+
+#### Cursor
+
+```bash
+cp -r skills/debug-bridge ~/.cursor/skills/
+```
+
+#### Codex
+
+```bash
+cp -r skills/debug-bridge ~/.codex/skills/
+```
+
+#### VS Code / GitHub Copilot
+
+```bash
+cp -r skills/debug-bridge .github/skills/
+```
+
+### Skill Documentation
+
+See [`skills/debug-bridge/SKILL.md`](./skills/debug-bridge/SKILL.md) for complete documentation including:
+- All available commands with parameters
+- Error handling and recovery patterns
+- Workflow examples (login, form filling, etc.)
+- Troubleshooting guide
+
+### Programmatic WebSocket API
+
+For direct programmatic control, connect via WebSocket:
 
 ```javascript
 const ws = new WebSocket('ws://localhost:4000/debug?role=agent&sessionId=myapp');
@@ -171,7 +238,63 @@ ws.send(JSON.stringify({
   sessionId: 'myapp',
   timestamp: Date.now()
 }));
+
+// Type text with options
+ws.send(JSON.stringify({
+  type: 'type',
+  target: { stableId: 'email-input' },
+  text: 'user@example.com',
+  options: { clear: true, pressEnter: false },
+  requestId: '3',
+  protocolVersion: 1,
+  sessionId: 'myapp',
+  timestamp: Date.now()
+}));
+
+// Take screenshot
+ws.send(JSON.stringify({
+  type: 'request_screenshot',
+  fullPage: true,
+  requestId: '4',
+  protocolVersion: 1,
+  sessionId: 'myapp',
+  timestamp: Date.now()
+}));
 ```
+
+### Available Commands
+
+| Command | Description | Key Parameters |
+|---------|-------------|----------------|
+| `request_ui_tree` | Get interactive elements | - |
+| `click` | Click element | `target: { stableId?, selector?, text? }` |
+| `type` | Type text | `target, text, options: { clear?, delay?, pressEnter? }` |
+| `hover` | Hover over element | `target` |
+| `select` | Select dropdown option | `target, value?, label?, index?` |
+| `focus` | Focus element | `target` |
+| `scroll` | Scroll page/element | `target?, x?, y?` |
+| `navigate` | Go to URL | `url` |
+| `evaluate` | Execute JavaScript | `code` |
+| `request_screenshot` | Capture viewport | `selector?, fullPage?` |
+| `request_state` | Get cookies/localStorage | `scope?` |
+| `request_dom_snapshot` | Get full HTML | - |
+
+### Error Handling
+
+Commands return structured error responses:
+
+```json
+{
+  "type": "command_result",
+  "success": false,
+  "error": {
+    "code": "TARGET_NOT_FOUND",
+    "message": "Element not found"
+  }
+}
+```
+
+Error codes: `TARGET_NOT_FOUND`, `TARGET_NOT_VISIBLE`, `TARGET_DISABLED`, `TIMEOUT`, `EVAL_DISABLED`, `EVAL_ERROR`, `NAVIGATION_FAILED`, `INVALID_COMMAND`
 
 ## Documentation
 
@@ -190,6 +313,68 @@ pnpm run build
 # Run in development mode
 pnpm run dev
 ```
+
+## Plugin Publishing
+
+### How Publishing Works
+
+Debug Bridge uses **GitHub as a plugin marketplace**. There's no central registry - your GitHub repository acts as the distribution source.
+
+**Publishing Flow:**
+
+1. **Create Plugin Structure** (already done ✅)
+   ```
+   .claude-plugin/
+   ├── plugin.json        # Plugin metadata
+   └── marketplace.json   # Marketplace catalog
+   skills/
+   └── debug-bridge/      # Skill implementation
+   ```
+
+2. **Push to GitHub**
+   ```bash
+   git add .claude-plugin/ skills/
+   git commit -m "feat: add Claude Code plugin"
+   git push origin main
+   ```
+
+3. **Users Install**
+   ```bash
+   # Add your marketplace
+   /plugin marketplace add stevengonsalvez/agent-bridge
+
+   # Install the plugin
+   /plugin install debug-bridge@agent-bridge-marketplace
+   ```
+
+### Version Management
+
+- Use semantic versioning in `.claude-plugin/plugin.json`
+- Update version for each release:
+  ```json
+  {
+    "version": "0.2.0"  // Update this
+  }
+  ```
+- Tag releases in Git:
+  ```bash
+  git tag v0.2.0
+  git push origin v0.2.0
+  ```
+
+### No Approval Required
+
+- No review process by Anthropic
+- You control the release cycle
+- Users pull updates when they reinstall
+
+### Distribution Methods
+
+| Method | Use Case | Installation |
+|--------|----------|--------------|
+| **GitHub Marketplace** | Public distribution | `/plugin marketplace add owner/repo` |
+| **Local Development** | Testing, development | `claude --plugin-dir ./path` |
+| **Manual Copy** | Team sharing, private use | Copy to `~/.claude/plugins/` |
 
 ## License
 
