@@ -2,7 +2,10 @@
   "name": "debug-bridge",
   "version": "0.1.2",
   "description": "Browser automation and inspection toolkit for AI agents. Debug web apps, inspect UI, automate workflows, take screenshots.",
-  "author": "stevengonsalvez",
+  "author": {
+    "name": "stevengonsalvez",
+    "url": "https://github.com/stevengonsalvez"
+  },
   "license": "MIT",
   "repository": "https://github.com/stevengonsalvez/agent-bridge",
   "keywords": [

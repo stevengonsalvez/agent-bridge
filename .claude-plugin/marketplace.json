@@ -11,7 +11,10 @@
       "source": "./",
       "description": "Browser automation and inspection toolkit for AI agents. Debug web apps, inspect UI, automate workflows, take screenshots.",
       "version": "0.1.2",
-      "author": "stevengonsalvez",
+      "author": {
+        "name": "stevengonsalvez",
+        "url": "https://github.com/stevengonsalvez"
+      },
       "license": "MIT",
       "keywords": [
         "debug",
