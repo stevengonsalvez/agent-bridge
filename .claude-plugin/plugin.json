@@ -20,16 +20,9 @@
     "ai-agent"
   ],
   "skills": [
-    "skills/debug-bridge"
+    "./skills/debug-bridge"
   ],
   "commands": [],
   "agents": [],
-  "hooks": [],
-  "compatibility": {
-    "claude-code": ">=1.0.0"
-  },
-  "dependencies": {
-    "cli": "debug-bridge-cli",
-    "browser-sdk": "debug-bridge-browser"
-  }
+  "hooks": []
 }
