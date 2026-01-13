@@ -10,7 +10,7 @@
       "name": "debug-bridge",
       "source": "./",
       "description": "Browser automation and inspection toolkit for AI agents. Debug web apps, inspect UI, automate workflows, take screenshots.",
-      "version": "0.1.2",
+      "version": "0.2.0",
       "author": {
         "name": "stevengonsalvez",
         "url": "https://github.com/stevengonsalvez"
