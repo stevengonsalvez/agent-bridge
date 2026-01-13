@@ -194,13 +194,20 @@ function createHumanFormatter(): OutputFormatter {
     },
     commandResult: (msg) => {
       if (msg.success) {
-        let resultInfo = '';
-        if (msg.result !== undefined) {
+        console.log(`✓ ${msg.requestType} (${msg.duration}ms)`);
+        // For evaluate commands, display the result on a separate line
+        if (msg.requestType === 'evaluate' && msg.result !== undefined) {
+          const resultStr =
+            typeof msg.result === 'string' ? msg.result : JSON.stringify(msg.result, null, 2);
+          console.log(`   → ${resultStr}`);
+        } else if (msg.result !== undefined && msg.requestType !== 'evaluate') {
+          // For other commands, show truncated result inline
           const resultStr =
             typeof msg.result === 'string' ? msg.result : JSON.stringify(msg.result);
-          resultInfo = `: ${resultStr.substring(0, 80)}${resultStr.length > 80 ? '...' : ''}`;
+          if (resultStr.length > 0) {
+            console.log(`   → ${resultStr.substring(0, 100)}${resultStr.length > 100 ? '...' : ''}`);
+          }
         }
-        console.log(`✓ ${msg.requestType} (${msg.duration}ms)${resultInfo}`);
       } else {
         console.log(`✗ ${msg.requestType} failed: ${msg.error?.message}`);
       }
@@ -233,7 +240,8 @@ function formatUiTree(items: UiTreeItem[]): void {
   items.forEach((item, i) => {
     const num = String(i + 1).padStart(2, ' ');
     const role = (item.role || 'element').padEnd(10);
-    const id = truncate(item.stableId || '-', 45);
+    // Generate short alias from stableId for easier targeting
+    const shortId = generateShortId(item.stableId, item.role);
 
     // Build description from available info
     let desc = '';
@@ -252,8 +260,33 @@ function formatUiTree(items: UiTreeItem[]): void {
     // Add visibility indicator
     const visibility = item.visible === false ? ' (hidden)' : '';
 
-    console.log(`  ${num}. [${role}] ${id}  ${desc}${visibility}`);
+    console.log(`  ${num}. [${role}] ${shortId}  ${desc}${visibility}`);
   });
+}
+
+// Generate a short, usable ID alias from the full stableId
+function generateShortId(stableId: string | undefined, role: string | undefined): string {
+  if (!stableId) return '-';
+
+  // Extract role prefix (first 3 chars of role, lowercase)
+  const rolePrefix = (role || 'elm').substring(0, 3).toLowerCase();
+
+  // Create hash from stableId for uniqueness
+  const hash = simpleHash(stableId);
+
+  return `${rolePrefix}-${hash}`;
+}
+
+// Simple hash function to create 6-char hex string from stableId
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  // Convert to hex and take first 6 chars (ensure positive)
+  return Math.abs(hash).toString(16).padStart(6, '0').substring(0, 6);
 }
 
 function truncate(str: string, max: number): string {

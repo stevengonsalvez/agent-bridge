@@ -32,7 +32,14 @@ export class CommandExecutor {
           break;
         case 'evaluate':
           if (!this.config.enableEval) throw { code: 'EVAL_DISABLED', message: 'Eval disabled' };
-          result = new Function(cmd.code)();
+          // Wrap code in return to capture expression result
+          // This allows both expressions like "1+1" and statements like "console.log('hi')"
+          try {
+            result = new Function(`return (${cmd.code})`)();
+          } catch {
+            // If return fails (e.g., for statements), try direct execution
+            result = new Function(cmd.code)();
+          }
           break;
         case 'scroll':
           window.scrollTo({ left: cmd.x, top: cmd.y, behavior: 'smooth' });
@@ -336,9 +343,11 @@ export class CommandExecutor {
         height: canvas.height,
         timestamp: Date.now(),
       });
-    } catch {
-      // html2canvas failed (likely due to modern CSS like oklch())
-      // Return viewport dimensions without image data
+    } catch (error) {
+      // Log error for debugging
+      console.warn('[DebugBridge] Screenshot capture failed:', error instanceof Error ? error.message : error);
+
+      // Send response with error info so agents know what happened
       this.send({
         type: 'screenshot',
         requestId,
@@ -346,6 +355,10 @@ export class CommandExecutor {
         width: window.innerWidth,
         height: window.innerHeight,
         timestamp: Date.now(),
+        error: {
+          code: 'SCREENSHOT_FAILED',
+          message: error instanceof Error ? error.message : 'Unknown screenshot error',
+        },
       });
     }
   }
