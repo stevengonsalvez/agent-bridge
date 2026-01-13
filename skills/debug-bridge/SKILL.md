@@ -16,23 +16,89 @@ default_port: 4000
 
 Control web apps via WebSocket. Click, type, screenshot, inspect.
 
-## Quick Start
+## Prerequisites (Webapp Setup)
+
+**The webapp MUST have the debug-bridge SDK installed and configured before agents can control it.**
+
+### Step 1: Install SDK in Webapp
 
 ```bash
-# 1. Start server (in tmux for persistence)
+npm install debug-bridge-browser
+```
+
+### Step 2: Add Initialization Code
+
+Create `src/debug-bridge.ts` (or add to your app's entry point):
+
+```typescript
+import { createDebugBridge } from 'debug-bridge-browser';
+
+// ONLY runs in development - safe to leave in production builds
+if (import.meta.env.DEV) {
+  const params = new URLSearchParams(window.location.search);
+  const session = params.get('session');
+  const port = params.get('port') || '4000';
+
+  if (session) {
+    const bridge = createDebugBridge({
+      url: `ws://localhost:${port}/debug?role=app&sessionId=${session}`,
+      sessionId: session,
+      appName: 'My App',  // Shows in CLI when connected
+      appVersion: '1.0.0'
+    });
+
+    bridge.connect();
+
+    // Optional: expose for manual debugging
+    (window as any).__debugBridge = bridge;
+  }
+}
+```
+
+### Step 3: Import in App Entry
+
+```typescript
+// main.tsx or App.tsx
+import './debug-bridge';  // Add this import
+```
+
+### How It Works
+
+1. Webapp reads `?session=X&port=Y` from URL
+2. If present, connects to debug server as `role=app`
+3. Agent connects to same server as `role=agent`
+4. Agent sends commands → Server relays → Webapp executes → Results returned
+
+```
+┌─────────────┐     WebSocket      ┌─────────────┐     WebSocket      ┌─────────────┐
+│   AI Agent  │ ◄─────────────────► │  CLI Server │ ◄─────────────────►│   Webapp    │
+│             │   role=agent       │  (port 4000) │   role=app         │  (browser)  │
+└─────────────┘                    └─────────────┘                    └─────────────┘
+```
+
+---
+
+## Agent Usage
+
+**Once the webapp has the SDK configured, agents can control it.**
+
+### Quick Start
+
+```bash
+# 1. Start debug server (in tmux for persistence)
 SESSION="debug-$(date +%s)"
 PORT=$(shuf -i 4000-4999 -n 1)
 tmux new-session -d -s "$SESSION"
 tmux send-keys -t "$SESSION" "npx debug-bridge-cli connect --session $SESSION --port $PORT 2>&1 | tee debug-bridge-$PORT.log" C-m
 
-# 2. Open app with debug params
+# 2. Open webapp with debug params (webapp must have SDK installed!)
 open "http://localhost:5173?session=$SESSION&port=$PORT"
 
-# 3. Use CLI commands (attach to tmux)
+# 3. Attach to tmux to use CLI
 tmux attach -t "$SESSION"
 ```
 
-## CLI Commands
+### CLI Commands
 
 | Command | Example | Description |
 |---------|---------|-------------|
@@ -45,21 +111,21 @@ tmux attach -t "$SESSION"
 | `go <url>` | `go /login` | Navigate to URL |
 | `find <query>` | `find email` | Search UI tree |
 
-### Targeting
+### Targeting Elements
 
 Elements can be targeted by:
 - **Index**: `click 3` (element #3 from `ui` output)
-- **Text**: `click "Submit"` (matches button text)
+- **Text**: `click "Submit"` (matches button/link text)
 - **Placeholder**: `type "email" "test@example.com"`
-- **StableId**: `click btn-656b07` (shown in `ui` output)
+- **StableId**: `click btn-656b07` (hash shown in `ui` output)
 
-## WebSocket API (for agents)
+### WebSocket API (Programmatic)
 
 ```javascript
-// Connect
+// Connect as agent
 const ws = new WebSocket(`ws://localhost:4000/debug?role=agent&sessionId=my-session`);
 
-// Base message
+// Base message (required fields)
 const msg = {
   protocolVersion: 1,
   sessionId: 'my-session',
@@ -67,7 +133,7 @@ const msg = {
   requestId: crypto.randomUUID()
 };
 
-// Commands
+// Send commands
 ws.send(JSON.stringify({ ...msg, type: 'request_ui_tree' }));
 ws.send(JSON.stringify({ ...msg, type: 'click', target: { stableId: 'btn-abc' } }));
 ws.send(JSON.stringify({ ...msg, type: 'type', target: { selector: '#email' }, text: 'test@example.com' }));
@@ -76,105 +142,79 @@ ws.send(JSON.stringify({ ...msg, type: 'request_screenshot' }));
 ws.send(JSON.stringify({ ...msg, type: 'navigate', url: '/dashboard' }));
 ```
 
-### Target Resolution
-
-```typescript
-target: {
-  stableId?: string;   // Best - stable across renders
-  selector?: string;   // CSS selector
-  text?: string;       // Visible text match
-}
-```
-
 ### Response Types
 
 ```javascript
-// UI Tree
+// UI Tree response
 { type: 'ui_tree', items: [{ stableId, role, text, label, visible, meta }] }
 
-// Command result
+// Command success
 { type: 'command_result', success: true, result: any, duration: 5 }
 
 // Screenshot
 { type: 'screenshot', data: 'base64...', width: 1920, height: 1080 }
 
-// Errors
+// Error
 { type: 'command_result', success: false, error: { code: 'TARGET_NOT_FOUND', message: '...' } }
 ```
 
-## Common Workflows
+---
+
+## Example Workflows
 
 ### Login Flow
 ```
-ui                           # Discover elements
-type "email" "user@test.com" # Fill email
-type "password" "secret123"  # Fill password
-click "Sign In"              # Submit
-screenshot                   # Verify result
+ui                           # Discover form elements
+type "email" "user@test.com" # Fill email field
+type "password" "secret123"  # Fill password field
+click "Sign In"              # Click submit button
+screenshot                   # Capture result for verification
 ```
 
 ### Form Testing
 ```
-go /register                 # Navigate
-ui                           # List fields
-type 1 "John"                # First input
-type 2 "john@test.com"       # Second input
+go /register                 # Navigate to page
+ui                           # List interactive elements
+type 1 "John"                # Fill first input by index
+type 2 "john@test.com"       # Fill second input
 click "Submit"               # Submit form
-state                        # Check localStorage
+state                        # Check localStorage for saved data
 ```
 
-### Debug Issue
+### Debugging
 ```
-ui                           # See current state
-js localStorage.getItem('token')  # Check auth
-js window.__REDUX_STATE__    # Inspect state
+ui                           # See current page state
+js localStorage.getItem('token')  # Check auth token
+js window.__REDUX_STATE__    # Inspect app state
 screenshot                   # Capture for analysis
 ```
 
+---
+
 ## Error Recovery
 
-| Error | Fix |
-|-------|-----|
-| `TARGET_NOT_FOUND` | Run `ui` to refresh, check element exists |
-| `TARGET_NOT_VISIBLE` | Scroll first: `scroll 0 500` |
-| `EVAL_DISABLED` | App disabled eval - use DOM commands |
-| `SCREENSHOT_FAILED` | Modern CSS issue - use DOM inspection |
-
-## Setup Requirements
-
-**App must have SDK installed:**
-```typescript
-// In your app (dev only)
-import { createDebugBridge } from 'debug-bridge-browser';
-
-if (import.meta.env.DEV) {
-  const params = new URLSearchParams(location.search);
-  const session = params.get('session');
-  const port = params.get('port') || '4000';
-
-  if (session) {
-    createDebugBridge({
-      url: `ws://localhost:${port}/debug?role=app&sessionId=${session}`,
-      sessionId: session,
-      appName: 'My App'
-    }).connect();
-  }
-}
-```
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `TARGET_NOT_FOUND` | Element not in DOM | Run `ui` to refresh, verify element exists |
+| `TARGET_NOT_VISIBLE` | Element off-screen | `scroll 0 500` first, then retry |
+| `EVAL_DISABLED` | App disabled eval | Use DOM commands instead |
+| `SCREENSHOT_FAILED` | Modern CSS (oklch) | Use `js` to inspect DOM directly |
+| No connection | Webapp missing SDK | Verify SDK is installed and initialized |
 
 ## Troubleshooting
 
 ```bash
-# Port in use
+# Port already in use
 lsof -ti:4000 | xargs kill -9
 
-# Check connection
+# Check if server is running
 tmux attach -t debug-*
 
-# View logs
+# View server logs
 tail -f debug-bridge-*.log
 
-# Browser not connecting
-# - Check URL has ?session=X&port=Y
-# - Check browser console for [DebugBridge] logs
+# Webapp not connecting?
+# 1. Check URL has ?session=X&port=Y
+# 2. Check browser console for [DebugBridge] logs
+# 3. Verify SDK is imported in dev mode
 ```
