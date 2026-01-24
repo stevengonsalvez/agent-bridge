@@ -1,6 +1,6 @@
 {
   "name": "debug-bridge-browser",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Browser SDK for debug-bridge - enables AI agents to inspect and control web apps",
   "author": "stevengonsalvez",
   "license": "MIT",
@@ -29,7 +29,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "debug-bridge-types": "workspace:*",
+    "debug-bridge-types": "^0.2.1",
     "html2canvas-pro": "^1.6.3"
   },
   "devDependencies": {
