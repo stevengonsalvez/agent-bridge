@@ -7,14 +7,25 @@ triggers:
   - click the button
   - take a screenshot
   - inspect the UI
+  - capture network requests
+  - monitor navigation
 type: cli-tool
 protocol_version: 1
 default_port: 4000
+capabilities:
+  - ui_tree
+  - dom_snapshot
+  - console
+  - errors
+  - network
+  - navigation
+  - screenshot
+  - eval
 ---
 
 # Debug Bridge Runbook
 
-Control web apps via WebSocket. Click, type, screenshot, inspect.
+Control web apps via WebSocket. Click, type, screenshot, inspect, capture network traffic, monitor navigation.
 
 ## Prerequisites (Webapp Setup)
 
@@ -44,7 +55,17 @@ if (import.meta.env.DEV) {
       url: `ws://localhost:${port}/debug?role=app&sessionId=${session}`,
       sessionId: session,
       appName: 'My App',  // Shows in CLI when connected
-      appVersion: '1.0.0'
+      appVersion: '1.0.0',
+
+      // Feature toggles (all true by default)
+      enableNetwork: true,      // Capture fetch/XHR requests
+      enableNavigation: true,   // Track route changes
+      enableConsole: true,      // Capture console.log/error
+      enableErrors: true,       // Capture unhandled errors
+
+      // Optional: filter which URLs to capture
+      networkUrlFilter: (url) => !url.includes('/analytics'),
+      maxNetworkBodySize: 10000,  // Truncate large request/response bodies
     });
 
     bridge.connect();
@@ -156,6 +177,18 @@ ws.send(JSON.stringify({ ...msg, type: 'navigate', url: '/dashboard' }));
 
 // Error
 { type: 'command_result', success: false, error: { code: 'TARGET_NOT_FOUND', message: '...' } }
+
+// Network request (auto-streamed)
+{ type: 'network_request', requestId: 'net-1-1234', method: 'POST', url: '/api/users', initiator: 'fetch' }
+
+// Network response (auto-streamed)
+{ type: 'network_response', requestId: 'net-1-1234', status: 200, statusText: 'OK', duration: 45, ok: true, body: '{"id":1}' }
+
+// Navigation event (auto-streamed)
+{ type: 'navigation', url: '/dashboard', previousUrl: '/login', trigger: 'pushstate' }
+
+// Console message (auto-streamed)
+{ type: 'console', level: 'error', args: ['Failed to fetch user', '{"status":401}'] }
 ```
 
 ---
@@ -189,6 +222,33 @@ js window.__REDUX_STATE__    # Inspect app state
 screenshot                   # Capture for analysis
 ```
 
+### API Debugging (Network Capture)
+```
+# Network requests are auto-captured - watch the CLI output:
+# 🌐 [POST] /api/login
+#    ✓ 200 OK (45ms)
+# 🌐 [GET] /api/users/me
+#    ✗ 401 Unauthorized (12ms)
+
+# Navigation is also tracked:
+# 🔀 [pushstate] /dashboard
+# 🔀 [popstate] /login
+```
+
+### Monitoring API Calls
+```javascript
+// Connect as agent and filter for network events
+ws.onmessage = (e) => {
+  const msg = JSON.parse(e.data);
+  if (msg.type === 'network_response' && !msg.ok) {
+    console.log(`API Error: ${msg.status} on request ${msg.requestId}`);
+  }
+  if (msg.type === 'navigation') {
+    console.log(`User navigated to: ${msg.url}`);
+  }
+};
+```
+
 ---
 
 ## Error Recovery
@@ -200,6 +260,21 @@ screenshot                   # Capture for analysis
 | `EVAL_DISABLED` | App disabled eval | Use DOM commands instead |
 | `SCREENSHOT_FAILED` | Modern CSS (oklch) | Use `js` to inspect DOM directly |
 | No connection | Webapp missing SDK | Verify SDK is installed and initialized |
+| Missing network events | SDK config | Check `enableNetwork: true` in config |
+| Missing navigation events | SDK config | Check `enableNavigation: true` in config |
+
+## Telemetry Reference
+
+| Telemetry | Auto-sent | Description |
+|-----------|-----------|-------------|
+| `ui_tree` | On connect + changes | Interactive elements list |
+| `dom_mutations` | Continuous | DOM changes (batched) |
+| `console` | Continuous | Console.log/warn/error |
+| `error` | On error | Unhandled errors |
+| `network_request` | On fetch/XHR | Outgoing API calls |
+| `network_response` | On response | API responses with status/body |
+| `navigation` | On route change | URL changes (push/pop/replace/hash) |
+| `state_update` | On change | Custom app state (if configured) |
 
 ## Troubleshooting
 

@@ -13,6 +13,9 @@ import type {
   ErrorMessage,
   StateUpdateMessage,
   ScreenshotMessage,
+  NetworkRequestMessage,
+  NetworkResponseMessage,
+  NavigationMessage,
 } from './telemetry';
 import type { CommandMessage } from './commands';
 import type { CommandResultMessage } from './results';
@@ -27,5 +30,8 @@ export type BridgeMessage =
   | ErrorMessage
   | StateUpdateMessage
   | ScreenshotMessage
+  | NetworkRequestMessage
+  | NetworkResponseMessage
+  | NavigationMessage
   | CommandMessage
   | CommandResultMessage;

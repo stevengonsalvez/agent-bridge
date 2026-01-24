@@ -49,3 +49,33 @@ export type ScreenshotMessage = BaseMessage & {
   height: number;
   timestamp: number;
 };
+
+// Network telemetry
+export type NetworkRequestMessage = BaseMessage & {
+  type: 'network_request';
+  requestId: string;
+  method: string;
+  url: string;
+  headers?: Record<string, string>;
+  body?: string;
+  initiator?: 'fetch' | 'xhr';
+};
+
+export type NetworkResponseMessage = BaseMessage & {
+  type: 'network_response';
+  requestId: string;
+  status: number;
+  statusText: string;
+  headers?: Record<string, string>;
+  body?: string; // Truncated if too large
+  duration: number;
+  ok: boolean;
+};
+
+// Navigation telemetry
+export type NavigationMessage = BaseMessage & {
+  type: 'navigation';
+  url: string;
+  previousUrl?: string;
+  trigger: 'pushstate' | 'popstate' | 'replacestate' | 'hashchange' | 'initial';
+};

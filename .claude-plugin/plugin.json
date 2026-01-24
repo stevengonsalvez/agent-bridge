@@ -1,7 +1,7 @@
 {
   "name": "debug-bridge",
-  "version": "0.2.0",
-  "description": "Browser automation and inspection toolkit for AI agents. Debug web apps, inspect UI, automate workflows, take screenshots.",
+  "version": "0.3.0",
+  "description": "Browser automation and inspection toolkit for AI agents. Debug web apps, inspect UI, capture network traffic, monitor navigation, take screenshots.",
   "author": {
     "name": "stevengonsalvez",
     "url": "https://github.com/stevengonsalvez"
@@ -17,7 +17,9 @@
     "screenshot",
     "ui-inspection",
     "websocket",
-    "ai-agent"
+    "ai-agent",
+    "network-capture",
+    "navigation"
   ],
   "skills": [
     "./skills/debug-bridge"

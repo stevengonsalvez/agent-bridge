@@ -9,6 +9,8 @@ import { DomObserver } from './telemetry/dom-observer';
 import { UiTreeBuilder } from './telemetry/ui-tree';
 import { ConsoleHook } from './telemetry/console-hook';
 import { ErrorHook } from './telemetry/error-hook';
+import { NetworkHook } from './telemetry/network-hook';
+import { NavigationHook } from './telemetry/navigation-hook';
 import { CommandExecutor } from './commands/executor';
 
 export type DebugBridge = {
@@ -26,10 +28,13 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
     enableConsole: true,
     enableErrors: true,
     enableEval: false,
+    enableNetwork: true,
+    enableNavigation: true,
     domMutationBatchMs: 100,
     maxConsoleArgs: 10,
     maxConsoleArgLength: 1000,
     maxDomSnapshotSize: 5 * 1024 * 1024,
+    maxNetworkBodySize: 10000,
     ...config,
   };
 
@@ -37,6 +42,8 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
   let domObserver: DomObserver | null = null;
   let consoleHook: ConsoleHook | null = null;
   let errorHook: ErrorHook | null = null;
+  let networkHook: NetworkHook | null = null;
+  let navigationHook: NavigationHook | null = null;
   let commandExecutor: CommandExecutor | null = null;
 
   const send = (msg: Partial<BridgeMessage> & { type: string }) => {
@@ -74,6 +81,8 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
       if (resolvedConfig.enableErrors) capabilities.push('errors');
       if (resolvedConfig.enableEval) capabilities.push('eval');
       if (resolvedConfig.getCustomState) capabilities.push('custom_state');
+      if (resolvedConfig.enableNetwork) capabilities.push('network');
+      if (resolvedConfig.enableNavigation) capabilities.push('navigation');
       send({ type: 'capabilities', capabilities });
 
       if (resolvedConfig.enableDomSnapshot) {
@@ -120,6 +129,49 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
         errorHook.start();
       }
 
+      if (resolvedConfig.enableNetwork) {
+        networkHook = new NetworkHook(
+          (request) => {
+            send({
+              type: 'network_request',
+              requestId: request.requestId,
+              method: request.method,
+              url: request.url,
+              headers: request.headers,
+              body: request.body,
+              initiator: request.initiator,
+            });
+          },
+          (response) => {
+            send({
+              type: 'network_response',
+              requestId: response.requestId,
+              status: response.status,
+              statusText: response.statusText,
+              headers: response.headers,
+              body: response.body,
+              duration: response.duration,
+              ok: response.ok,
+            });
+          },
+          resolvedConfig.maxNetworkBodySize ?? 10000,
+          resolvedConfig.networkUrlFilter
+        );
+        networkHook.start();
+      }
+
+      if (resolvedConfig.enableNavigation) {
+        navigationHook = new NavigationHook((event) => {
+          send({
+            type: 'navigation',
+            url: event.url,
+            previousUrl: event.previousUrl,
+            trigger: event.trigger,
+          });
+        });
+        navigationHook.start();
+      }
+
       commandExecutor = new CommandExecutor(resolvedConfig, send);
 
       resolvedConfig.onConnect?.();
@@ -157,6 +209,10 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
     consoleHook = null;
     errorHook?.stop();
     errorHook = null;
+    networkHook?.stop();
+    networkHook = null;
+    navigationHook?.stop();
+    navigationHook = null;
   };
 
   return {

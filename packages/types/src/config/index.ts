@@ -17,11 +17,15 @@ export type DebugBridgeConfig = {
   enableConsole?: boolean;
   enableErrors?: boolean;
   enableEval?: boolean;
+  enableNetwork?: boolean;
+  enableNavigation?: boolean;
 
   domMutationBatchMs?: number;
   maxConsoleArgs?: number;
   maxConsoleArgLength?: number;
   maxDomSnapshotSize?: number;
+  maxNetworkBodySize?: number;
+  networkUrlFilter?: (url: string) => boolean;
 
   getCustomState?: () => Record<string, unknown>;
   getStableId?: (el: Element) => string | null;

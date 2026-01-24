@@ -5,7 +5,9 @@ export type Capability =
   | 'console'
   | 'errors'
   | 'eval'
-  | 'custom_state';
+  | 'custom_state'
+  | 'network'
+  | 'navigation';
 
 export type ElementTarget = {
   stableId?: string;

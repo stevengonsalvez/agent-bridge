@@ -11,6 +11,9 @@ import type {
   CapabilitiesMessage,
   DomSnapshotMessage,
   ScreenshotMessage,
+  NetworkRequestMessage,
+  NetworkResponseMessage,
+  NavigationMessage,
   UiTreeItem,
 } from 'debug-bridge-types';
 import * as fs from 'fs';
@@ -104,6 +107,37 @@ function createJsonFormatter(): OutputFormatter {
       } else if (msg.type === 'capabilities') {
         const caps = msg as CapabilitiesMessage;
         out({ event: 'telemetry', type: 'capabilities', capabilities: caps.capabilities });
+      } else if (msg.type === 'network_request') {
+        const req = msg as NetworkRequestMessage;
+        out({
+          event: 'telemetry',
+          type: 'network_request',
+          requestId: req.requestId,
+          method: req.method,
+          url: req.url,
+          initiator: req.initiator,
+        });
+      } else if (msg.type === 'network_response') {
+        const res = msg as NetworkResponseMessage;
+        out({
+          event: 'telemetry',
+          type: 'network_response',
+          requestId: res.requestId,
+          status: res.status,
+          statusText: res.statusText,
+          duration: res.duration,
+          ok: res.ok,
+          bodyLength: res.body?.length ?? 0,
+        });
+      } else if (msg.type === 'navigation') {
+        const nav = msg as NavigationMessage;
+        out({
+          event: 'telemetry',
+          type: 'navigation',
+          url: nav.url,
+          previousUrl: nav.previousUrl,
+          trigger: nav.trigger,
+        });
       }
     },
     commandSent: (cmd) => {
@@ -183,6 +217,17 @@ function createHumanFormatter(): OutputFormatter {
         } else {
           console.log(`[screenshot] ${screenshot.width}x${screenshot.height} (capture failed)`);
         }
+      } else if (msg.type === 'network_request') {
+        const req = msg as NetworkRequestMessage;
+        console.log(`🌐 [${req.method}] ${truncate(req.url, 60)}`);
+      } else if (msg.type === 'network_response') {
+        const res = msg as NetworkResponseMessage;
+        const statusIcon = res.ok ? '✓' : '✗';
+        const statusColor = res.ok ? '' : '❌ ';
+        console.log(`   ${statusColor}${statusIcon} ${res.status} ${res.statusText} (${res.duration}ms)`);
+      } else if (msg.type === 'navigation') {
+        const nav = msg as NavigationMessage;
+        console.log(`🔀 [${nav.trigger}] ${truncate(nav.url, 60)}`);
       }
     },
     commandSent: (cmd) => {
