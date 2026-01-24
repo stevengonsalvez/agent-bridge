@@ -35,6 +35,10 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
     maxConsoleArgLength: 1000,
     maxDomSnapshotSize: 5 * 1024 * 1024,
     maxNetworkBodySize: 10000,
+    autoReconnect: true,
+    reconnectMaxAttempts: 10,
+    reconnectBaseDelayMs: 1000,
+    reconnectMaxDelayMs: 30000,
     ...config,
   };
 
@@ -45,6 +49,9 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
   let networkHook: NetworkHook | null = null;
   let navigationHook: NavigationHook | null = null;
   let commandExecutor: CommandExecutor | null = null;
+  let reconnectAttempt = 0;
+  let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  let intentionalDisconnect = false;
 
   const send = (msg: Partial<BridgeMessage> & { type: string }) => {
     if (ws?.readyState !== WebSocket.OPEN) return;
@@ -58,12 +65,41 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
     );
   };
 
+  const scheduleReconnect = () => {
+    if (!resolvedConfig.autoReconnect || intentionalDisconnect) return;
+    if (reconnectAttempt >= resolvedConfig.reconnectMaxAttempts) {
+      resolvedConfig.onError?.(new Error(`Max reconnection attempts (${resolvedConfig.reconnectMaxAttempts}) exceeded`));
+      return;
+    }
+
+    reconnectAttempt++;
+    const delay = Math.min(
+      resolvedConfig.reconnectBaseDelayMs * Math.pow(2, reconnectAttempt - 1),
+      resolvedConfig.reconnectMaxDelayMs
+    );
+
+    resolvedConfig.onReconnecting?.(reconnectAttempt, resolvedConfig.reconnectMaxAttempts);
+
+    reconnectTimeout = setTimeout(() => {
+      reconnectTimeout = null;
+      connect();
+    }, delay);
+  };
+
   const connect = () => {
     if (ws?.readyState === WebSocket.OPEN) return;
+    if (reconnectTimeout) {
+      clearTimeout(reconnectTimeout);
+      reconnectTimeout = null;
+    }
+    intentionalDisconnect = false;
 
     ws = new WebSocket(resolvedConfig.url);
 
     ws.onopen = () => {
+      // Reset reconnection state on successful connection
+      reconnectAttempt = 0;
+
       send({
         type: 'hello',
         appName: resolvedConfig.appName,
@@ -189,6 +225,7 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
     ws.onclose = () => {
       cleanup();
       resolvedConfig.onDisconnect?.();
+      scheduleReconnect();
     };
 
     ws.onerror = () => {
@@ -197,6 +234,11 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
   };
 
   const disconnect = () => {
+    intentionalDisconnect = true;
+    if (reconnectTimeout) {
+      clearTimeout(reconnectTimeout);
+      reconnectTimeout = null;
+    }
     cleanup();
     ws?.close();
     ws = null;

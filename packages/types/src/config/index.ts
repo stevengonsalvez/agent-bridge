@@ -33,4 +33,11 @@ export type DebugBridgeConfig = {
   onConnect?: () => void;
   onDisconnect?: () => void;
   onError?: (error: Error) => void;
+  onReconnecting?: (attempt: number, maxAttempts: number) => void;
+
+  // Reconnection settings
+  autoReconnect?: boolean;
+  reconnectMaxAttempts?: number;
+  reconnectBaseDelayMs?: number;
+  reconnectMaxDelayMs?: number;
 };

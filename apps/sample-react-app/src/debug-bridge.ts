@@ -19,6 +19,7 @@ export function initDebugBridge() {
     }),
     onConnect: () => console.log('[DebugBridge] Connected'),
     onDisconnect: () => console.log('[DebugBridge] Disconnected'),
+    onReconnecting: (attempt, max) => console.log(`[DebugBridge] Reconnecting... attempt ${attempt}/${max}`),
   });
 
   bridge.connect();

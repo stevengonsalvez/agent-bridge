@@ -1,6 +1,6 @@
 {
   "name": "debug-bridge-browser",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Browser SDK for debug-bridge - enables AI agents to inspect and control web apps",
   "author": "stevengonsalvez",
   "license": "MIT",

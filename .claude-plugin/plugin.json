@@ -1,6 +1,6 @@
 {
   "name": "debug-bridge",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Browser automation and inspection toolkit for AI agents. Debug web apps, inspect UI, capture network traffic, monitor navigation, take screenshots.",
   "author": {
     "name": "stevengonsalvez",
