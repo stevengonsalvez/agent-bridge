@@ -131,6 +131,35 @@ tmux attach -t "$SESSION"
 | `state` | `state` | Get cookies, localStorage |
 | `go <url>` | `go /login` | Navigate to URL |
 | `find <query>` | `find email` | Search UI tree |
+| `eval <code>` | `eval localStorage.clear()` | Alias for `js` |
+| `help` | `help` | Show all available commands |
+
+### AI Agent Usage (via tmux)
+
+**AI agents can't attach to terminals interactively.** Use `tmux send-keys` to send commands and `tmux capture-pane` to read output:
+
+```bash
+# Send a command to the debug-bridge CLI
+tmux send-keys -t "$SESSION" "screenshot" C-m
+
+# Wait for result and read output
+sleep 2
+tmux capture-pane -t "$SESSION" -p | tail -20
+
+# Run JavaScript in the browser
+tmux send-keys -t "$SESSION" "js document.title" C-m
+sleep 1
+tmux capture-pane -t "$SESSION" -p | tail -5
+
+# Trigger events (e.g., for testing visibility handlers)
+tmux send-keys -t "$SESSION" 'eval window.dispatchEvent(new Event("focus"))' C-m
+```
+
+**Key Pattern for AI Agents:**
+1. Start CLI in tmux (not foreground)
+2. Send commands via `tmux send-keys`
+3. Read results via `tmux capture-pane`
+4. Screenshots are saved as PNG files in current directory
 
 ### Targeting Elements
 
