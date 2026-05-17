@@ -3,6 +3,12 @@ export type CliConfig = {
   host: string;
   session: string;
   json: boolean;
+  cdp?: boolean;
+  browser?: 'managed' | 'connect' | 'none';
+  cdpEndpoint?: string;
+  profile?: string;
+  storageState?: string;
+  headless?: boolean;
 };
 
 export type DebugBridgeConfig = {

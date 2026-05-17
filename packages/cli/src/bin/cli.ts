@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { startServer } from '../server/websocket-server';
 import { createOutputFormatter } from '../output/formatter';
 import { setupStdinHandler, updateCachedUiTree } from '../input/stdin-handler';
+import { createBrowserSidecar, type BrowserSidecar } from 'debug-bridge-browser-sidecar';
 import type { CliConfig, UiTreeMessage, UiTreeItem } from 'debug-bridge-types';
 
 function printHelp(): void {
@@ -39,12 +40,24 @@ program
   .option('-s, --session <string>', 'Session ID', 'default')
   .option('--json', 'Output JSON (for Claude Code)', false)
   .option('--host <string>', 'Host to bind to', 'localhost')
+  .option('--cdp', 'Start a CDP browser sidecar provider', false)
+  .option('--browser <mode>', 'Browser sidecar mode: managed, connect, or none', 'managed')
+  .option('--cdp-endpoint <url>', 'CDP WebSocket endpoint for --browser connect')
+  .option('--profile <nameOrPath>', 'Persistent browser profile name or absolute path', 'agent-bridge-default')
+  .option('--storage-state <path>', 'Optional Playwright storageState file to import/export')
+  .option('--headed', 'Run managed browser with a visible window', false)
   .action(async (options) => {
     const config: CliConfig = {
       port: parseInt(options.port, 10),
       host: options.host,
       session: options.session,
       json: options.json,
+      cdp: options.cdp,
+      browser: options.browser,
+      cdpEndpoint: options.cdpEndpoint,
+      profile: options.profile,
+      storageState: options.storageState,
+      headless: !options.headed,
     };
 
     const formatter = createOutputFormatter(config.json);
@@ -71,6 +84,22 @@ program
       },
     });
 
+    let sidecar: BrowserSidecar | null = null;
+    if (config.cdp && config.browser !== 'none') {
+      sidecar = createBrowserSidecar({
+        host: config.host,
+        port: config.port,
+        sessionId: config.session,
+        profile: config.profile,
+        mode: config.browser === 'connect' ? 'connect' : 'managed',
+        cdpEndpoint: config.cdpEndpoint,
+        storageState: config.storageState,
+        headless: config.headless ?? true,
+      });
+      await sidecar.start();
+      formatter.info(`CDP sidecar started with profile ${config.profile ?? 'agent-bridge-default'}`);
+    }
+
     setupStdinHandler(
       config.json,
       (cmd) => {
@@ -95,8 +124,10 @@ program
 
     process.on('SIGINT', () => {
       formatter.info('\nShutting down...');
-      server.close();
-      process.exit(0);
+      void sidecar?.stop().finally(() => {
+        server.close();
+        process.exit(0);
+      });
     });
   });
 

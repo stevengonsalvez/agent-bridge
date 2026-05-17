@@ -48,6 +48,7 @@ export type ScreenshotMessage = BaseMessage & {
   width: number;
   height: number;
   timestamp: number;
+  error?: { code: 'SCREENSHOT_FAILED'; message: string };
 };
 
 // Network telemetry

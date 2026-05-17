@@ -2,7 +2,7 @@
 // ABOUTME: Supports index-based, text-based, and stableId-based element targeting
 
 import * as readline from 'readline';
-import type { CommandMessage, UiTreeItem, ElementTarget } from 'debug-bridge-types';
+import type { BridgeMessage, CommandMessage, UiTreeItem, ElementTarget } from 'debug-bridge-types';
 import { PROTOCOL_VERSION } from 'debug-bridge-types';
 
 // Cached UI tree for local find command and element resolution
@@ -104,7 +104,7 @@ type LocalCommandResult = {
 
 export function setupStdinHandler(
   jsonMode: boolean,
-  onCommand: (cmd: CommandMessage) => void,
+  onCommand: (cmd: CommandMessage | BridgeMessage) => void,
   onLocalCommand?: (result: LocalCommandResult) => void
 ): void {
   const rl = readline.createInterface({
@@ -128,13 +128,13 @@ export function setupStdinHandler(
     try {
       const parsed = JSON.parse(trimmed);
 
-      const cmd: CommandMessage = {
+      const cmd = {
         protocolVersion: PROTOCOL_VERSION,
         sessionId: 'default',
         timestamp: Date.now(),
         requestId: parsed.requestId || `cmd-${Date.now()}`,
         ...parsed,
-      };
+      } as CommandMessage | BridgeMessage;
 
       onCommand(cmd);
     } catch {

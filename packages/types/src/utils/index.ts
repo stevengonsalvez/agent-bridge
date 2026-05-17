@@ -7,7 +7,47 @@ export type Capability =
   | 'eval'
   | 'custom_state'
   | 'network'
-  | 'navigation';
+  | 'navigation'
+  | 'provider_lifecycle'
+  | 'browser_targets'
+  | 'browser_cookies'
+  | 'browser_storage'
+  | 'browser_network'
+  | 'browser_screenshot'
+  | 'browser_navigation'
+  | 'cdp';
+
+export type ProviderType = 'app' | 'cdp' | 'extension' | 'remote';
+
+export type ProviderLifecycleState =
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting'
+  | 'restored'
+  | 'detached'
+  | 'stale'
+  | 'closed'
+  | 'error';
+
+export type BrowserTargetRef = {
+  targetId: string;
+  url: string;
+  title?: string;
+  type: 'page' | 'iframe' | 'worker' | 'service_worker' | 'other';
+  selected?: boolean;
+  profile?: string;
+};
+
+export type BrowserCookie = {
+  name: string;
+  value?: string;
+  domain: string;
+  path: string;
+  expires: number;
+  httpOnly: boolean;
+  secure: boolean;
+  sameSite: 'Strict' | 'Lax' | 'None';
+};
 
 export type ElementTarget = {
   stableId?: string;
