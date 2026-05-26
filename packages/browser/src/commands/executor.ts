@@ -1,4 +1,4 @@
-import type { CommandMessage, DebugBridgeConfig, BridgeMessage } from 'debug-bridge-types';
+import type { CommandMessage, DebugBridgeConfig, BridgeMessage, ErrorCode } from 'debug-bridge-types';
 import { UiTreeBuilder } from '../telemetry/ui-tree';
 import html2canvas from 'html2canvas-pro';
 
@@ -17,7 +17,7 @@ export class CommandExecutor {
     const start = performance.now();
     let success = true;
     let result: unknown;
-    let error: { code: string; message: string } | undefined;
+    let error: { code: ErrorCode; message: string } | undefined;
 
     try {
       switch (cmd.type) {
@@ -105,7 +105,7 @@ export class CommandExecutor {
       }
     } catch (e: unknown) {
       success = false;
-      const err = e as { code?: string; message?: string };
+      const err = e as { code?: ErrorCode; message?: string };
       error = { code: err.code ?? 'UNKNOWN_ERROR', message: err.message ?? String(e) };
     }
 
@@ -211,7 +211,7 @@ export class CommandExecutor {
 
   private click(target: { stableId?: string; selector?: string; text?: string }): void {
     const el = this.resolveTarget(target);
-    el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true }));
   }
 
   private type(

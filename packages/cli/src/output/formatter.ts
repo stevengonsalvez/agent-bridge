@@ -1,4 +1,9 @@
 import type {
+  BrowserNetworkFailedMessage,
+  BrowserNetworkRequestMessage as CdpNetworkRequestMessage,
+  BrowserNetworkResponseMessage as CdpNetworkResponseMessage,
+  BrowserResultMessage,
+  BrowserTargetMessage,
   BridgeMessage,
   HelloMessage,
   CommandMessage,
@@ -14,6 +19,10 @@ import type {
   NetworkRequestMessage,
   NetworkResponseMessage,
   NavigationMessage,
+  ProviderHelloMessage,
+  ProviderLifecycleMessage,
+  UiFeedbackBatchCreatedMessage,
+  UiFeedbackSuggestionDecisionMessage,
   UiTreeItem,
 } from 'debug-bridge-types';
 import * as fs from 'fs';
@@ -23,8 +32,8 @@ export type OutputFormatter = {
   appConnected: (hello: HelloMessage) => void;
   appDisconnected: () => void;
   telemetry: (msg: BridgeMessage) => void;
-  commandSent: (cmd: CommandMessage) => void;
-  commandResult: (msg: CommandResultMessage) => void;
+  commandSent: (cmd: CommandMessage | BridgeMessage) => void;
+  commandResult: (msg: CommandResultMessage | BrowserResultMessage) => void;
   info: (message: string) => void;
   uiTreeFormatted: (items: UiTreeItem[]) => void;
   findResults: (items: UiTreeItem[], query: string) => void;
@@ -138,10 +147,86 @@ function createJsonFormatter(): OutputFormatter {
           previousUrl: nav.previousUrl,
           trigger: nav.trigger,
         });
+      } else if (msg.type === 'provider_hello') {
+        const provider = msg as ProviderHelloMessage;
+        out({
+          event: 'provider_connected',
+          providerId: provider.providerId,
+          providerType: provider.providerType,
+          capabilities: provider.capabilities,
+          target: provider.target,
+          profile: provider.profile,
+        });
+      } else if (msg.type === 'provider_lifecycle') {
+        const lifecycle = msg as ProviderLifecycleMessage;
+        out({
+          event: 'provider_lifecycle',
+          providerId: lifecycle.providerId,
+          providerType: lifecycle.providerType,
+          state: lifecycle.state,
+          reason: lifecycle.reason,
+          target: lifecycle.target,
+        });
+      } else if (msg.type === 'browser_target') {
+        const target = msg as BrowserTargetMessage;
+        out({ event: 'browser_target', providerId: target.providerId, type: target.event, target: target.target });
+      } else if (msg.type === 'browser_network_request') {
+        const req = msg as CdpNetworkRequestMessage;
+        out({
+          event: 'browser_network_request',
+          providerId: req.providerId,
+          requestId: req.requestId,
+          method: req.method,
+          url: req.url,
+          resourceType: req.resourceType,
+        });
+      } else if (msg.type === 'browser_network_response') {
+        const res = msg as CdpNetworkResponseMessage;
+        out({
+          event: 'browser_network_response',
+          providerId: res.providerId,
+          requestId: res.requestId,
+          status: res.status,
+          url: res.url,
+          mimeType: res.mimeType,
+        });
+      } else if (msg.type === 'browser_network_failed') {
+        const failed = msg as BrowserNetworkFailedMessage;
+        out({
+          event: 'browser_network_failed',
+          providerId: failed.providerId,
+          requestId: failed.requestId,
+          url: failed.url,
+          errorText: failed.errorText,
+        });
+      } else if (msg.type === 'ui_feedback_batch_created' || msg.type === 'ui_feedback_batch_updated') {
+        const feedback = msg as UiFeedbackBatchCreatedMessage;
+        out({
+          event: 'ui_feedback_batch',
+          type: msg.type,
+          batchId: feedback.batchId,
+          itemCount: feedback.itemCount,
+          summaryPath: feedback.summaryPath,
+          batchPath: feedback.batchPath,
+        });
+      } else if (msg.type === 'ui_feedback_suggestion_decision') {
+        const decision = msg as UiFeedbackSuggestionDecisionMessage;
+        out({
+          event: 'ui_feedback_suggestion_decision',
+          batchId: decision.batchId,
+          itemId: decision.itemId,
+          suggestionId: decision.suggestionId,
+          status: decision.status,
+          comment: decision.comment,
+        });
       }
     },
     commandSent: (cmd) => {
-      out({ event: 'command_sent', requestId: cmd.requestId, type: cmd.type });
+      out({
+        event: 'command_sent',
+        requestId: 'requestId' in cmd ? cmd.requestId : undefined,
+        type: cmd.type,
+      });
     },
     commandResult: (msg) => {
       out({
@@ -149,6 +234,7 @@ function createJsonFormatter(): OutputFormatter {
         requestId: msg.requestId,
         success: msg.success,
         duration: msg.duration,
+        requestType: 'requestType' in msg ? msg.requestType : undefined,
         ...(msg.result !== undefined && { result: msg.result }),
         ...(msg.error && { error: msg.error }),
       });
@@ -228,6 +314,36 @@ function createHumanFormatter(): OutputFormatter {
       } else if (msg.type === 'navigation') {
         const nav = msg as NavigationMessage;
         console.log(`🔀 [${nav.trigger}] ${truncate(nav.url, 60)}`);
+      } else if (msg.type === 'provider_hello') {
+        const provider = msg as ProviderHelloMessage;
+        console.log(`[provider:${provider.providerType}] ${provider.providerId} capabilities=${provider.capabilities.join(', ')}`);
+      } else if (msg.type === 'provider_lifecycle') {
+        const lifecycle = msg as ProviderLifecycleMessage;
+        console.log(`[provider:${lifecycle.providerType}] ${lifecycle.providerId} ${lifecycle.state}`);
+      } else if (msg.type === 'browser_target') {
+        const target = msg as BrowserTargetMessage;
+        console.log(`[browser_target:${target.event}] ${target.target.targetId} ${truncate(target.target.url, 60)}`);
+      } else if (msg.type === 'browser_network_request') {
+        const req = msg as CdpNetworkRequestMessage;
+        console.log(`🌐 [cdp:${req.method}] ${truncate(req.url, 60)}`);
+      } else if (msg.type === 'browser_network_response') {
+        const res = msg as CdpNetworkResponseMessage;
+        console.log(`   [cdp] ${res.status} ${truncate(res.url, 60)}`);
+      } else if (msg.type === 'browser_network_failed') {
+        const failed = msg as BrowserNetworkFailedMessage;
+        console.log(`   [cdp] failed ${truncate(failed.url ?? failed.requestId, 60)}: ${failed.errorText}`);
+      } else if (msg.type === 'ui_feedback_batch_created' || msg.type === 'ui_feedback_batch_updated') {
+        const feedback = msg as UiFeedbackBatchCreatedMessage;
+        console.log(
+          `[feedback] batch ${feedback.batchId} (${feedback.itemCount} item${feedback.itemCount === 1 ? '' : 's'})`
+        );
+        console.log(`  summary: ${feedback.summaryPath}`);
+        console.log(`  batch: ${feedback.batchPath}`);
+      } else if (msg.type === 'ui_feedback_suggestion_decision') {
+        const decision = msg as UiFeedbackSuggestionDecisionMessage;
+        console.log(
+          `[feedback] suggestion ${decision.suggestionId} ${decision.status} for ${decision.itemId}`
+        );
       }
     },
     commandSent: (cmd) => {

@@ -3,6 +3,8 @@ export * from './connection';
 export * from './telemetry';
 export * from './commands';
 export * from './results';
+export * from './browser';
+export * from './feedback';
 
 import type { HelloMessage, CapabilitiesMessage } from './connection';
 import type {
@@ -19,6 +21,17 @@ import type {
 } from './telemetry';
 import type { CommandMessage } from './commands';
 import type { CommandResultMessage } from './results';
+import type {
+  BrowserCommandMessage,
+  BrowserNetworkFailedMessage,
+  BrowserNetworkRequestMessage,
+  BrowserNetworkResponseMessage,
+  BrowserResultMessage,
+  BrowserTargetMessage,
+  ProviderHelloMessage,
+  ProviderLifecycleMessage,
+} from './browser';
+import type { UiFeedbackMessage } from './feedback';
 
 export type BridgeMessage =
   | HelloMessage
@@ -34,4 +47,13 @@ export type BridgeMessage =
   | NetworkResponseMessage
   | NavigationMessage
   | CommandMessage
-  | CommandResultMessage;
+  | CommandResultMessage
+  | ProviderHelloMessage
+  | ProviderLifecycleMessage
+  | BrowserTargetMessage
+  | BrowserNetworkRequestMessage
+  | BrowserNetworkResponseMessage
+  | BrowserNetworkFailedMessage
+  | BrowserCommandMessage
+  | BrowserResultMessage
+  | UiFeedbackMessage;

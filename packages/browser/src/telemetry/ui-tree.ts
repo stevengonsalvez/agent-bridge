@@ -125,7 +125,6 @@ export class UiTreeBuilder {
 
     const path: string[] = [];
     let current: Element | null = el;
-    let inShadow = false;
 
     while (current) {
       // Check if we've reached document.body
@@ -137,9 +136,11 @@ export class UiTreeBuilder {
         break;
       }
 
-      const parent = current.parentElement;
+      const parent: Element | null = current.parentElement;
       if (parent) {
-        const siblings = Array.from(parent.children).filter((c) => c.tagName === current!.tagName);
+        const siblings = Array.from(parent.children).filter(
+          (candidate: Element) => candidate.tagName === current!.tagName
+        );
         if (siblings.length > 1) {
           const index = siblings.indexOf(current) + 1;
           selector += `:nth-of-type(${index})`;
@@ -154,7 +155,6 @@ export class UiTreeBuilder {
           path.unshift(selector);
           path.unshift('::shadow');
           current = rootNode.host;
-          inShadow = true;
         } else {
           // Reached document root
           path.unshift(selector);

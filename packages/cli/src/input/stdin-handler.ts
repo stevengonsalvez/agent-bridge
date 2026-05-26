@@ -2,7 +2,7 @@
 // ABOUTME: Supports index-based, text-based, and stableId-based element targeting
 
 import * as readline from 'readline';
-import type { CommandMessage, UiTreeItem, ElementTarget } from 'debug-bridge-types';
+import type { BridgeMessage, CommandMessage, UiTreeItem, ElementTarget } from 'debug-bridge-types';
 import { PROTOCOL_VERSION } from 'debug-bridge-types';
 
 // Cached UI tree for local find command and element resolution
@@ -104,7 +104,7 @@ type LocalCommandResult = {
 
 export function setupStdinHandler(
   jsonMode: boolean,
-  onCommand: (cmd: CommandMessage) => void,
+  onCommand: (cmd: CommandMessage | BridgeMessage) => void,
   onLocalCommand?: (result: LocalCommandResult) => void
 ): void {
   const rl = readline.createInterface({
@@ -128,13 +128,13 @@ export function setupStdinHandler(
     try {
       const parsed = JSON.parse(trimmed);
 
-      const cmd: CommandMessage = {
+      const cmd = {
         protocolVersion: PROTOCOL_VERSION,
         sessionId: 'default',
         timestamp: Date.now(),
         requestId: parsed.requestId || `cmd-${Date.now()}`,
         ...parsed,
-      };
+      } as CommandMessage | BridgeMessage;
 
       onCommand(cmd);
     } catch {
@@ -155,7 +155,7 @@ export function setupStdinHandler(
 }
 
 type ParseResult =
-  | { type: 'remote'; cmd: CommandMessage }
+  | { type: 'remote'; cmd: CommandMessage | BridgeMessage }
   | { type: 'local'; local: LocalCommandResult }
   | { type: 'invalid' };
 
@@ -203,6 +203,43 @@ function parseCommand(input: string): ParseResult {
     case 'ui':
     case 'tree':
       return { type: 'remote', cmd: { ...base, type: 'request_ui_tree' } };
+
+    case 'feedback':
+      if (parts[1] === 'on') {
+        return { type: 'remote', cmd: { ...base, type: 'ui_feedback_enable' } };
+      }
+      if (parts[1] === 'off') {
+        return { type: 'remote', cmd: { ...base, type: 'ui_feedback_disable' } };
+      }
+      console.log('Usage: feedback on|off');
+      return { type: 'invalid' };
+
+    case 'feedback-suggest': {
+      const itemId = parts[1];
+      const comment = parts.slice(2).join(' ');
+      if (!itemId || !comment) {
+        console.log('Usage: feedback-suggest <item-id> <comment>');
+        return { type: 'invalid' };
+      }
+      return {
+        type: 'remote',
+        cmd: {
+          ...base,
+          type: 'ui_feedback_suggestion_added',
+          batchId: 'latest',
+          itemId,
+          suggestion: {
+            id: `sug_${Date.now()}`,
+            itemId,
+            batchId: 'latest',
+            createdAt: new Date().toISOString(),
+            status: 'proposed',
+            comment,
+            marks: [],
+          },
+        } as BridgeMessage,
+      };
+    }
 
     case 'click': {
       const parsed = parseTargetAndText(parts);
@@ -331,6 +368,8 @@ Commands:
   snapshot            Get full DOM HTML
   screenshot          Capture viewport screenshot
   state [scope]       Get application state (cookies, localStorage, etc)
+  feedback on|off     Toggle UI feedback overlay
+  feedback-suggest    Send a visual suggestion to the latest feedback batch
   navigate <url>      Navigate to URL
   focus <target>      Focus an element
   scroll <x> <y>      Scroll to position

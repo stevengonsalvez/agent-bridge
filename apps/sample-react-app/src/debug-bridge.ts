@@ -12,6 +12,14 @@ export function initDebugBridge() {
     appName: 'Sample React App',
     appVersion: '0.1.0',
     enableEval: true,
+    feedback: {
+      enabled: true,
+      launcher: true,
+      shortcut: 'Mod+Shift+F',
+      captureTelemetry: true,
+      captureAppState: true,
+      captureSourceHints: true,
+    },
     getCustomState: () => ({
       auth: useStore.getState().auth,
       cart: useStore.getState().cart,

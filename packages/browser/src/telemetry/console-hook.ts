@@ -31,7 +31,7 @@ export class ConsoleHook {
 
   stop(): void {
     for (const [level, original] of Object.entries(this.originals)) {
-      if (original) (console as Record<string, unknown>)[level] = original;
+      if (original) (console as unknown as Record<string, unknown>)[level] = original;
     }
     this.originals = {};
   }
