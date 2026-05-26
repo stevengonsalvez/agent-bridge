@@ -21,6 +21,8 @@ import type {
   NavigationMessage,
   ProviderHelloMessage,
   ProviderLifecycleMessage,
+  UiFeedbackBatchCreatedMessage,
+  UiFeedbackSuggestionDecisionMessage,
   UiTreeItem,
 } from 'debug-bridge-types';
 import * as fs from 'fs';
@@ -197,6 +199,26 @@ function createJsonFormatter(): OutputFormatter {
           url: failed.url,
           errorText: failed.errorText,
         });
+      } else if (msg.type === 'ui_feedback_batch_created' || msg.type === 'ui_feedback_batch_updated') {
+        const feedback = msg as UiFeedbackBatchCreatedMessage;
+        out({
+          event: 'ui_feedback_batch',
+          type: msg.type,
+          batchId: feedback.batchId,
+          itemCount: feedback.itemCount,
+          summaryPath: feedback.summaryPath,
+          batchPath: feedback.batchPath,
+        });
+      } else if (msg.type === 'ui_feedback_suggestion_decision') {
+        const decision = msg as UiFeedbackSuggestionDecisionMessage;
+        out({
+          event: 'ui_feedback_suggestion_decision',
+          batchId: decision.batchId,
+          itemId: decision.itemId,
+          suggestionId: decision.suggestionId,
+          status: decision.status,
+          comment: decision.comment,
+        });
       }
     },
     commandSent: (cmd) => {
@@ -310,6 +332,18 @@ function createHumanFormatter(): OutputFormatter {
       } else if (msg.type === 'browser_network_failed') {
         const failed = msg as BrowserNetworkFailedMessage;
         console.log(`   [cdp] failed ${truncate(failed.url ?? failed.requestId, 60)}: ${failed.errorText}`);
+      } else if (msg.type === 'ui_feedback_batch_created' || msg.type === 'ui_feedback_batch_updated') {
+        const feedback = msg as UiFeedbackBatchCreatedMessage;
+        console.log(
+          `[feedback] batch ${feedback.batchId} (${feedback.itemCount} item${feedback.itemCount === 1 ? '' : 's'})`
+        );
+        console.log(`  summary: ${feedback.summaryPath}`);
+        console.log(`  batch: ${feedback.batchPath}`);
+      } else if (msg.type === 'ui_feedback_suggestion_decision') {
+        const decision = msg as UiFeedbackSuggestionDecisionMessage;
+        console.log(
+          `[feedback] suggestion ${decision.suggestionId} ${decision.status} for ${decision.itemId}`
+        );
       }
     },
     commandSent: (cmd) => {

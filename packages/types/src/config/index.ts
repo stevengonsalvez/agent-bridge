@@ -9,6 +9,19 @@ export type CliConfig = {
   profile?: string;
   storageState?: string;
   headless?: boolean;
+  feedbackDir?: string;
+  feedbackArtifacts?: boolean;
+};
+
+export type FeedbackConfig = {
+  enabled?: boolean;
+  launcher?: boolean;
+  shortcut?: string;
+  maxImageBytes?: number;
+  maxImageDimension?: number;
+  captureTelemetry?: boolean;
+  captureAppState?: boolean;
+  captureSourceHints?: boolean;
 };
 
 export type DebugBridgeConfig = {
@@ -25,6 +38,7 @@ export type DebugBridgeConfig = {
   enableEval?: boolean;
   enableNetwork?: boolean;
   enableNavigation?: boolean;
+  feedback?: boolean | FeedbackConfig;
 
   domMutationBatchMs?: number;
   maxConsoleArgs?: number;

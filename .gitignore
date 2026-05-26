@@ -12,6 +12,14 @@ coverage/
 
 # Logs and session artifacts
 logs/
+.debug-bridge/feedback/
+.tmux-dev-session.json
+
+# Agent scratch state (local only)
+.agents/goals/
+.codex/session/
+plans/
+research/
 
 # Claude session state (local only)
 .claude/session/

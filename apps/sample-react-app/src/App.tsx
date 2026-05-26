@@ -47,7 +47,13 @@ export function App() {
 
 function Home() {
   return (
-    <div data-testid="home-page">
+    <div
+      data-testid="home-page"
+      data-component="Home"
+      data-source-file="apps/sample-react-app/src/App.tsx"
+      data-source-line="37"
+      data-feature="demo-home"
+    >
       <h1>Welcome to Debug Bridge Demo</h1>
       <p>Use the navigation to explore the app.</p>
     </div>
@@ -65,7 +71,13 @@ function Login() {
   };
 
   return (
-    <div data-testid="login-page">
+    <div
+      data-testid="login-page"
+      data-component="Login"
+      data-source-file="apps/sample-react-app/src/App.tsx"
+      data-source-line="48"
+      data-feature="demo-auth"
+    >
       <h1>Login</h1>
       <form onSubmit={handleSubmit}>
         <input
@@ -73,6 +85,10 @@ function Login() {
           type="email"
           placeholder="Email"
           data-testid="email-input"
+          data-component="LoginEmailInput"
+          data-source-file="apps/sample-react-app/src/App.tsx"
+          data-source-line="63"
+          data-feature="demo-auth"
           required
         />
         <input
@@ -100,11 +116,25 @@ function Products() {
   const addToCart = useStore((s) => s.addToCart);
 
   return (
-    <div data-testid="products-page">
+    <div
+      data-testid="products-page"
+      data-component="Products"
+      data-source-file="apps/sample-react-app/src/App.tsx"
+      data-source-line="94"
+      data-feature="demo-products"
+    >
       <h1>Products</h1>
       <div className="products">
         {PRODUCTS.map((p) => (
-          <div key={p.id} className="product" data-testid={`product-${p.id}`}>
+          <div
+            key={p.id}
+            className="product"
+            data-testid={`product-${p.id}`}
+            data-component="ProductCard"
+            data-source-file="apps/sample-react-app/src/App.tsx"
+            data-source-line="106"
+            data-feature="demo-products"
+          >
             <h3>{p.name}</h3>
             <p>${p.price}</p>
             <button onClick={() => addToCart(p)} data-testid={`add-${p.id}`}>
@@ -122,7 +152,13 @@ function Cart() {
   const total = cart.items.reduce((s, i) => s + i.price * i.qty, 0);
 
   return (
-    <div data-testid="cart-page">
+    <div
+      data-testid="cart-page"
+      data-component="Cart"
+      data-source-file="apps/sample-react-app/src/App.tsx"
+      data-source-line="125"
+      data-feature="demo-cart"
+    >
       <h1>Cart</h1>
       {cart.items.length === 0 ? (
         <p data-testid="empty-cart">Your cart is empty.</p>

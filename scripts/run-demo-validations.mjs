@@ -19,12 +19,15 @@ function spawnManaged(name, command, args, options = {}) {
     env: { ...process.env, ...options.env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  child.suppressOutput = false;
   children.add(child);
 
   child.stdout.on('data', (chunk) => {
+    if (child.suppressOutput) return;
     process.stdout.write(`[${name}] ${chunk}`);
   });
   child.stderr.on('data', (chunk) => {
+    if (child.suppressOutput) return;
     process.stderr.write(`[${name}] ${chunk}`);
   });
   child.on('exit', () => {
@@ -32,6 +35,16 @@ function spawnManaged(name, command, args, options = {}) {
   });
 
   return child;
+}
+
+async function stopManaged(child, signal = 'SIGTERM') {
+  if (!children.has(child) || child.killed) return;
+  child.suppressOutput = true;
+  child.kill(signal);
+  await Promise.race([
+    new Promise((resolve) => child.once('exit', resolve)),
+    delay(1000),
+  ]);
 }
 
 async function waitForHttp(url, name, timeoutMs = 15000) {
@@ -128,8 +141,25 @@ async function main() {
     DEBUG_BRIDGE_APP_URL: `http://127.0.0.1:${appPort}/?session=${encodeURIComponent(sessionId)}&port=${bridgePort}`,
   });
 
-  bridge.kill('SIGTERM');
-  await delay(500);
+  await run('validate-feedback-annotation-demo', 'node', ['scripts/validate-feedback-annotation-demo.mjs'], {
+    DEBUG_BRIDGE_SESSION: sessionId,
+    DEBUG_BRIDGE_PORT: String(bridgePort),
+    DEBUG_BRIDGE_WS_URL: `ws://localhost:${bridgePort}/debug?role=agent&sessionId=${encodeURIComponent(sessionId)}`,
+    DEBUG_BRIDGE_APP_URL: `http://127.0.0.1:${appPort}/?session=${encodeURIComponent(sessionId)}&port=${bridgePort}`,
+  });
+
+  await run('validate-feedback-mcp-demo', 'node', ['scripts/validate-feedback-mcp-demo.mjs'], {
+    DEBUG_BRIDGE_SESSION: sessionId,
+    DEBUG_BRIDGE_PORT: String(bridgePort),
+    DEBUG_BRIDGE_APP_URL: `http://127.0.0.1:${appPort}/?session=${encodeURIComponent(sessionId)}&port=${bridgePort}`,
+  });
+
+  await run('validate-feedback-mcp-mcporter', 'node', ['scripts/validate-feedback-mcp-mcporter.mjs'], {
+    DEBUG_BRIDGE_SESSION: sessionId,
+    DEBUG_BRIDGE_PORT: String(bridgePort),
+  });
+
+  await stopManaged(bridge);
 
   await run('validate-cdp-sidecar-demo', 'node', ['scripts/validate-cdp-sidecar-demo.mjs'], {
     DEBUG_BRIDGE_HOST: 'localhost',
@@ -137,7 +167,7 @@ async function main() {
     DEBUG_BRIDGE_PORT: String(cdpPort),
   });
 
-  app.kill('SIGTERM');
+  await stopManaged(app);
   console.log(JSON.stringify({ ok: true, appPort, bridgePort, cdpPort }, null, 2));
 }
 
@@ -148,7 +178,7 @@ main()
   })
   .finally(async () => {
     for (const child of children) {
-      if (!child.killed) child.kill('SIGTERM');
+      await stopManaged(child);
     }
     await delay(500);
   });

@@ -71,6 +71,14 @@ export type RequestScreenshotCommand = CommandBase & {
   fullPage?: boolean;
 };
 
+export type UiFeedbackEnableCommand = CommandBase & {
+  type: 'ui_feedback_enable';
+};
+
+export type UiFeedbackDisableCommand = CommandBase & {
+  type: 'ui_feedback_disable';
+};
+
 export type CommandMessage =
   | ClickCommand
   | TypeCommand
@@ -83,6 +91,8 @@ export type CommandMessage =
   | RequestUiTreeCommand
   | RequestDomSnapshotCommand
   | RequestStateCommand
-  | RequestScreenshotCommand;
+  | RequestScreenshotCommand
+  | UiFeedbackEnableCommand
+  | UiFeedbackDisableCommand;
 
 export type CommandType = CommandMessage['type'];

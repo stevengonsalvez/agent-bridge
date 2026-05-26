@@ -15,7 +15,8 @@ export type Capability =
   | 'browser_network'
   | 'browser_screenshot'
   | 'browser_navigation'
-  | 'cdp';
+  | 'cdp'
+  | 'ui_feedback';
 
 export type ProviderType = 'app' | 'cdp' | 'extension' | 'remote';
 

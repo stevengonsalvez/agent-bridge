@@ -3,6 +3,7 @@ import type {
   BridgeMessage,
   CommandMessage,
   Capability,
+  FeedbackConfig,
 } from 'debug-bridge-types';
 import { PROTOCOL_VERSION } from 'debug-bridge-types';
 import { DomObserver } from './telemetry/dom-observer';
@@ -12,12 +13,14 @@ import { ErrorHook } from './telemetry/error-hook';
 import { NetworkHook } from './telemetry/network-hook';
 import { NavigationHook } from './telemetry/navigation-hook';
 import { CommandExecutor } from './commands/executor';
+import { FeedbackController, type FeedbackApi } from './feedback/controller';
 
 export type DebugBridge = {
   connect: () => void;
   disconnect: () => void;
   isConnected: () => boolean;
   sendState: (scope: string, state: unknown) => void;
+  feedback?: FeedbackApi;
 };
 
 export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
@@ -41,6 +44,7 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
     reconnectMaxDelayMs: 30000,
     ...config,
   };
+  const feedbackConfig = resolveFeedbackConfig(resolvedConfig.feedback);
 
   let ws: WebSocket | null = null;
   let domObserver: DomObserver | null = null;
@@ -49,6 +53,8 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
   let networkHook: NetworkHook | null = null;
   let navigationHook: NavigationHook | null = null;
   let commandExecutor: CommandExecutor | null = null;
+  let feedbackController: FeedbackController | null = null;
+  let shortcutHandler: ((event: KeyboardEvent) => void) | null = null;
   let reconnectAttempt = 0;
   let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   let intentionalDisconnect = false;
@@ -119,6 +125,7 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
       if (resolvedConfig.getCustomState) capabilities.push('custom_state');
       if (resolvedConfig.enableNetwork) capabilities.push('network');
       if (resolvedConfig.enableNavigation) capabilities.push('navigation');
+      if (feedbackConfig.enabled) capabilities.push('ui_feedback');
       send({ type: 'capabilities', capabilities });
 
       if (resolvedConfig.enableDomSnapshot) {
@@ -150,6 +157,7 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
       if (resolvedConfig.enableConsole) {
         consoleHook = new ConsoleHook(
           (level, args) => {
+            feedbackController?.recordConsole(level, args);
             send({ type: 'console', level, args });
           },
           resolvedConfig.maxConsoleArgs,
@@ -160,6 +168,7 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
 
       if (resolvedConfig.enableErrors) {
         errorHook = new ErrorHook((errorMsg) => {
+          feedbackController?.recordError(errorMsg.message, errorMsg.stack);
           send(errorMsg);
         });
         errorHook.start();
@@ -168,6 +177,12 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
       if (resolvedConfig.enableNetwork) {
         networkHook = new NetworkHook(
           (request) => {
+            feedbackController?.recordNetwork({
+              type: 'request',
+              requestId: request.requestId,
+              method: request.method,
+              url: request.url,
+            });
             send({
               type: 'network_request',
               requestId: request.requestId,
@@ -179,6 +194,14 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
             });
           },
           (response) => {
+            feedbackController?.recordNetwork({
+              type: 'response',
+              requestId: response.requestId,
+              status: response.status,
+              statusText: response.statusText,
+              ok: response.ok,
+              duration: response.duration,
+            });
             send({
               type: 'network_response',
               requestId: response.requestId,
@@ -198,6 +221,7 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
 
       if (resolvedConfig.enableNavigation) {
         navigationHook = new NavigationHook((event) => {
+          feedbackController?.recordNavigation(event);
           send({
             type: 'navigation',
             url: event.url,
@@ -208,6 +232,17 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
         navigationHook.start();
       }
 
+      if (feedbackConfig.enabled) {
+        feedbackController = new FeedbackController({ ...resolvedConfig, feedbackConfig }, send);
+        shortcutHandler = (event: KeyboardEvent) => {
+          if (!matchesShortcut(event, feedbackConfig.shortcut)) return;
+          event.preventDefault();
+          feedbackController?.enable();
+        };
+        window.addEventListener('keydown', shortcutHandler);
+        if (feedbackConfig.launcher) feedbackController.enable();
+      }
+
       commandExecutor = new CommandExecutor(resolvedConfig, send);
 
       resolvedConfig.onConnect?.();
@@ -215,8 +250,9 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
 
     ws.onmessage = (event) => {
       try {
-        const msg = JSON.parse(event.data) as CommandMessage;
-        commandExecutor?.execute(msg);
+        const msg = JSON.parse(event.data) as BridgeMessage;
+        if (feedbackController?.handleBridgeMessage(msg)) return;
+        commandExecutor?.execute(msg as CommandMessage);
       } catch {
         // Ignore
       }
@@ -255,6 +291,10 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
     networkHook = null;
     navigationHook?.stop();
     navigationHook = null;
+    if (shortcutHandler) window.removeEventListener('keydown', shortcutHandler);
+    shortcutHandler = null;
+    feedbackController?.disable();
+    feedbackController = null;
   };
 
   return {
@@ -262,5 +302,36 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
     disconnect,
     isConnected: () => ws?.readyState === WebSocket.OPEN,
     sendState: (scope, state) => send({ type: 'state_update', scope, state }),
+    get feedback() {
+      return feedbackController ?? undefined;
+    },
   };
+}
+
+function resolveFeedbackConfig(value: DebugBridgeConfig['feedback']): Required<FeedbackConfig> {
+  const defaults: Required<FeedbackConfig> = {
+    enabled: false,
+    launcher: false,
+    shortcut: 'Mod+Shift+F',
+    maxImageBytes: 5 * 1024 * 1024,
+    maxImageDimension: 1600,
+    captureTelemetry: true,
+    captureAppState: true,
+    captureSourceHints: true,
+  };
+  if (value === true) return { ...defaults, enabled: true };
+  if (!value) return defaults;
+  return { ...defaults, ...value, enabled: value.enabled ?? true };
+}
+
+function matchesShortcut(event: KeyboardEvent, shortcut: string): boolean {
+  const normalized = shortcut.toLowerCase();
+  const wantsMod = normalized.includes('mod+');
+  const wantsShift = normalized.includes('shift+');
+  const key = normalized.split('+').at(-1);
+  return (
+    (!wantsMod || event.metaKey || event.ctrlKey) &&
+    (!wantsShift || event.shiftKey) &&
+    event.key.toLowerCase() === key
+  );
 }

@@ -45,6 +45,8 @@ program
   .option('--cdp-endpoint <url>', 'CDP WebSocket endpoint for --browser connect')
   .option('--profile <nameOrPath>', 'Persistent browser profile name or absolute path', 'agent-bridge-default')
   .option('--storage-state <path>', 'Optional Playwright storageState file to import/export')
+  .option('--feedback-dir <path>', 'Directory for UI feedback artifacts', '.debug-bridge/feedback')
+  .option('--no-feedback-artifacts', 'Route feedback events without writing local artifacts')
   .option('--headed', 'Run managed browser with a visible window', false)
   .action(async (options) => {
     const config: CliConfig = {
@@ -58,6 +60,8 @@ program
       profile: options.profile,
       storageState: options.storageState,
       headless: !options.headed,
+      feedbackDir: options.feedbackDir,
+      feedbackArtifacts: options.feedbackArtifacts,
     };
 
     const formatter = createOutputFormatter(config.json);

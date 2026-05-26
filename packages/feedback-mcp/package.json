@@ -1,0 +1,46 @@
+{
+  "name": "debug-bridge-feedback-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Agent Bridge UI feedback artifacts and visual suggestions",
+  "author": "stevengonsalvez",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stevengonsalvez/agent-bridge"
+  },
+  "keywords": ["debug", "bridge", "feedback", "mcp", "agent"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "bin": {
+    "debug-bridge-feedback-mcp": "./dist/bin/feedback-mcp.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "start": "node dist/bin/feedback-mcp.js",
+    "clean": "rm -rf dist",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.18.2",
+    "debug-bridge-types": "workspace:*",
+    "ws": "^8.18.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.13",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  }
+}

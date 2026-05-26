@@ -7,8 +7,14 @@ import type {
   CommandResultMessage,
   CliConfig,
   ProviderType,
+  UiFeedbackBatchSubmitMessage,
+  UiFeedbackSuggestionAcceptedMessage,
+  UiFeedbackSuggestionAddedMessage,
+  UiFeedbackSuggestionCommentedMessage,
+  UiFeedbackSuggestionRejectedMessage,
 } from 'debug-bridge-types';
 import { ProviderRegistry, isBrowserCommand, type ClientRecord, type ClientRole } from './provider-registry';
+import { FeedbackStore } from './feedback-store';
 
 type ServerCallbacks = {
   onAppConnected: (hello: HelloMessage) => void;
@@ -30,6 +36,10 @@ export function startServer(config: CliConfig, callbacks: ServerCallbacks): Debu
   });
 
   const clients = new ProviderRegistry<WebSocket>();
+  const feedbackStore = new FeedbackStore({
+    rootDir: config.feedbackDir,
+    writeArtifacts: config.feedbackArtifacts ?? true,
+  });
 
   // Helper to broadcast to clients of a specific role in a session
   function broadcastToRole(sessionId: string, role: 'app' | 'agent' | 'provider', msg: string, excludeWs?: WebSocket) {
@@ -43,6 +53,23 @@ export function startServer(config: CliConfig, callbacks: ServerCallbacks): Debu
   // Helper to get apps in a session
   function getApps(sessionId: string) {
     return clients.apps(sessionId);
+  }
+
+  function broadcastObject(sessionId: string, role: 'app' | 'agent' | 'provider', msg: BridgeMessage, excludeWs?: WebSocket) {
+    broadcastToRole(sessionId, role, JSON.stringify(msg), excludeWs);
+  }
+
+  function isFeedbackDecision(
+    msg: BridgeMessage
+  ): msg is
+    | UiFeedbackSuggestionAcceptedMessage
+    | UiFeedbackSuggestionRejectedMessage
+    | UiFeedbackSuggestionCommentedMessage {
+    return (
+      msg.type === 'ui_feedback_suggestion_accepted' ||
+      msg.type === 'ui_feedback_suggestion_rejected' ||
+      msg.type === 'ui_feedback_suggestion_commented'
+    );
   }
 
   wss.on('connection', (ws, req) => {
@@ -101,6 +128,26 @@ export function startServer(config: CliConfig, callbacks: ServerCallbacks): Debu
         const msg = JSON.parse(data.toString()) as BridgeMessage;
         const sender = clients.get(ws);
         if (!sender) return;
+
+        if (sender.role === 'app' && msg.type === 'ui_feedback_batch_submit') {
+          const created = feedbackStore.persistBatch(msg as UiFeedbackBatchSubmitMessage);
+          broadcastObject(sender.sessionId, 'agent', created, ws);
+          callbacks.onTelemetry(created);
+          return;
+        }
+
+        if (sender.role === 'app' && isFeedbackDecision(msg)) {
+          const decision = feedbackStore.persistDecision(msg);
+          broadcastObject(sender.sessionId, 'agent', decision, ws);
+          callbacks.onTelemetry(decision);
+          return;
+        }
+
+        if (sender.role === 'agent' && msg.type === 'ui_feedback_suggestion_added') {
+          feedbackStore.persistSuggestion(msg as UiFeedbackSuggestionAddedMessage);
+          broadcastToRole(sender.sessionId, 'app', data.toString(), ws);
+          return;
+        }
 
         // Route messages by sender role. Agents command app or browser providers; providers/apps emit to agents.
         if (sender.role === 'agent') {

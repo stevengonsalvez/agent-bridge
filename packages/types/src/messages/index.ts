@@ -4,6 +4,7 @@ export * from './telemetry';
 export * from './commands';
 export * from './results';
 export * from './browser';
+export * from './feedback';
 
 import type { HelloMessage, CapabilitiesMessage } from './connection';
 import type {
@@ -30,6 +31,7 @@ import type {
   ProviderHelloMessage,
   ProviderLifecycleMessage,
 } from './browser';
+import type { UiFeedbackMessage } from './feedback';
 
 export type BridgeMessage =
   | HelloMessage
@@ -53,4 +55,5 @@ export type BridgeMessage =
   | BrowserNetworkResponseMessage
   | BrowserNetworkFailedMessage
   | BrowserCommandMessage
-  | BrowserResultMessage;
+  | BrowserResultMessage
+  | UiFeedbackMessage;
