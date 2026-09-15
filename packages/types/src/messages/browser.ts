@@ -107,6 +107,42 @@ export type BrowserGetStorageCommand = BrowserCommandBase & {
 export type BrowserScreenshotCommand = BrowserCommandBase & {
   type: 'browser_screenshot';
   fullPage?: boolean;
+  selector?: string;
+  clip?: { x: number; y: number; width: number; height: number };
+};
+
+export type BrowserInteractiveSnapshotCommand = BrowserCommandBase & {
+  type: 'browser_interactive_snapshot';
+  compact?: boolean;
+  maxDepth?: number;
+};
+
+export type BrowserClickCommand = BrowserCommandBase & {
+  type: 'browser_click';
+  ref?: string;
+  selector?: string;
+  snapshotAfter?: boolean;
+};
+
+export type BrowserFillCommand = BrowserCommandBase & {
+  type: 'browser_fill';
+  ref?: string;
+  selector?: string;
+  text: string;
+  snapshotAfter?: boolean;
+};
+
+export type BrowserPreviewPatchCommand = BrowserCommandBase & {
+  type: 'browser_preview_patch';
+  cssPatch?: string;
+  jsPatch?: string;
+  clear?: boolean;
+};
+
+export type BrowserDesignModeCommand = BrowserCommandBase & {
+  type: 'browser_design_mode';
+  action: 'enable' | 'disable' | 'status' | 'get_handoff';
+  requestedChange?: string;
 };
 
 export type BrowserNetworkGetResponseBodyCommand = BrowserCommandBase & {
@@ -129,6 +165,11 @@ export type BrowserCommandMessage =
   | BrowserClearCookiesCommand
   | BrowserGetStorageCommand
   | BrowserScreenshotCommand
+  | BrowserInteractiveSnapshotCommand
+  | BrowserClickCommand
+  | BrowserFillCommand
+  | BrowserPreviewPatchCommand
+  | BrowserDesignModeCommand
   | BrowserNetworkGetResponseBodyCommand
   | CdpSendCommand;
 
@@ -144,3 +185,4 @@ export type BrowserResultMessage = BaseMessage & {
   error?: { code: string; message: string };
   duration: number;
 };
+

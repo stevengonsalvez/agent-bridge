@@ -5,6 +5,7 @@ import { createOutputFormatter } from '../output/formatter';
 import { setupStdinHandler, updateCachedUiTree } from '../input/stdin-handler';
 import { createBrowserSidecar, type BrowserSidecar } from 'debug-bridge-browser-sidecar';
 import type { CliConfig, UiTreeMessage, UiTreeItem } from 'debug-bridge-types';
+import { registerBrowserCommands } from '../browser/browser-commands';
 
 function printHelp(): void {
   console.log(`
@@ -33,6 +34,8 @@ program
   .description('Debug bridge CLI for connecting to web applications')
   .version('0.1.0');
 
+registerBrowserCommands(program);
+
 program
   .command('connect')
   .description('Start server and connect to an app')
@@ -48,6 +51,7 @@ program
   .option('--feedback-dir <path>', 'Directory for UI feedback artifacts', '.debug-bridge/feedback')
   .option('--no-feedback-artifacts', 'Route feedback events without writing local artifacts')
   .option('--headed', 'Run managed browser with a visible window', false)
+  .option('--headless', 'Run managed browser headlessly', true)
   .action(async (options) => {
     const config: CliConfig = {
       port: parseInt(options.port, 10),
@@ -59,7 +63,7 @@ program
       cdpEndpoint: options.cdpEndpoint,
       profile: options.profile,
       storageState: options.storageState,
-      headless: !options.headed,
+      headless: options.headed ? false : true,
       feedbackDir: options.feedbackDir,
       feedbackArtifacts: options.feedbackArtifacts,
     };

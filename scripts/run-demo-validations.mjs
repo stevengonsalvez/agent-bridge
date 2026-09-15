@@ -181,4 +181,5 @@ main()
       await stopManaged(child);
     }
     await delay(500);
+    process.exit(process.exitCode ?? 0);
   });

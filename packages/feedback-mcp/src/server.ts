@@ -319,8 +319,146 @@ export function createFeedbackMcpServer(options: FeedbackMcpOptions): {
     },
   );
 
+  server.registerTool(
+    'browser_open',
+    {
+      title: 'Open URL in Browser',
+      description: 'Open or navigate the managed browser sidecar to a URL.',
+      inputSchema: z.object({ url: z.string().url() }),
+    },
+    async ({ url }) => {
+      try {
+        const res = await client.sendBrowserCommand({ type: 'browser_navigate', url });
+        return jsonResult(res as JsonRecord);
+      } catch (error) {
+        return errorResult(error instanceof Error ? error.message : String(error));
+      }
+    },
+  );
+
+  server.registerTool(
+    'browser_snapshot',
+    {
+      title: 'Browser Interactive Snapshot',
+      description: 'Capture interactive elements tree with numbered handles (@e1, @e2) and bounding boxes.',
+      inputSchema: z.object({}),
+      annotations: { readOnlyHint: true },
+    },
+    async () => {
+      try {
+        const res = await client.sendBrowserCommand({ type: 'browser_interactive_snapshot' });
+        return jsonResult(res as JsonRecord);
+      } catch (error) {
+        return errorResult(error instanceof Error ? error.message : String(error));
+      }
+    },
+  );
+
+  server.registerTool(
+    'browser_click',
+    {
+      title: 'Click Element',
+      description: 'Click an element by handle (@e1) or CSS selector.',
+      inputSchema: z.object({
+        target: z.string().describe('Element handle (e.g. @e1) or CSS selector'),
+        snapshotAfter: z.boolean().optional().default(false),
+      }),
+    },
+    async ({ target, snapshotAfter }) => {
+      try {
+        const isRef = target.startsWith('@e');
+        const res = await client.sendBrowserCommand({
+          type: 'browser_click',
+          ref: isRef ? target : undefined,
+          selector: isRef ? undefined : target,
+          snapshotAfter,
+        });
+        return jsonResult(res as JsonRecord);
+      } catch (error) {
+        return errorResult(error instanceof Error ? error.message : String(error));
+      }
+    },
+  );
+
+  server.registerTool(
+    'browser_fill',
+    {
+      title: 'Fill Input Element',
+      description: 'Type text into an input element by handle (@e1) or CSS selector.',
+      inputSchema: z.object({
+        target: z.string().describe('Element handle (e.g. @e1) or CSS selector'),
+        text: z.string().describe('Text to fill'),
+        snapshotAfter: z.boolean().optional().default(false),
+      }),
+    },
+    async ({ target, text, snapshotAfter }) => {
+      try {
+        const isRef = target.startsWith('@e');
+        const res = await client.sendBrowserCommand({
+          type: 'browser_fill',
+          ref: isRef ? target : undefined,
+          selector: isRef ? undefined : target,
+          text,
+          snapshotAfter,
+        });
+        return jsonResult(res as JsonRecord);
+      } catch (error) {
+        return errorResult(error instanceof Error ? error.message : String(error));
+      }
+    },
+  );
+
+  server.registerTool(
+    'preview_code_fix',
+    {
+      title: 'Preview Code Fix in Browser',
+      description: 'Inject temporary CSS rules into the live browser session for instant visual review (<1s) before modifying disk files.',
+      inputSchema: z.object({
+        css: z.string().optional().describe('CSS rules to inject, e.g. "button { padding: 16px !important; }"'),
+        clear: z.boolean().optional().default(false).describe('Clear live preview style'),
+      }),
+    },
+    async ({ css, clear }) => {
+      try {
+        const res = await client.sendBrowserCommand({
+          type: 'browser_preview_patch',
+          cssPatch: css,
+          clear,
+        });
+        return jsonResult(res as JsonRecord);
+      } catch (error) {
+        return errorResult(error instanceof Error ? error.message : String(error));
+      }
+    },
+  );
+
+  server.registerTool(
+    'design_mode_control',
+    {
+      title: 'Control Design Mode',
+      description: 'Enable, disable, check status, or retrieve structured handoff from in-browser Design Mode.',
+      inputSchema: z.object({
+        action: z.enum(['enable', 'disable', 'status', 'get_handoff']),
+        requestedChange: z.string().optional(),
+      }),
+    },
+    async ({ action, requestedChange }) => {
+      try {
+        const res = await client.sendBrowserCommand({
+          type: 'browser_design_mode',
+          action,
+          requestedChange,
+        });
+        return jsonResult(res as JsonRecord);
+      } catch (error) {
+        return errorResult(error instanceof Error ? error.message : String(error));
+      }
+    },
+  );
+
   return { server, client, artifacts };
 }
+
 
 export async function runFeedbackMcpServer(options: FeedbackMcpOptions): Promise<void> {
   const { server } = createFeedbackMcpServer(options);

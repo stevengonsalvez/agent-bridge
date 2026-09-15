@@ -1,3 +1,5 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { chromium, type Browser, type BrowserContext, type CDPSession, type Page } from 'playwright';
 import type {
   BrowserCommandMessage,
@@ -27,6 +29,7 @@ type TargetState = {
   page: Page;
   cdp: CDPSession;
   ref: BrowserTargetRef;
+  elementRefs: Map<string, { selector: string; text?: string; tag: string }>;
 };
 
 type NetworkRequestState = {
@@ -76,10 +79,29 @@ export class PlaywrightProvider {
       void this.attachPage(page, true);
     });
 
+    const script = this.getRuntimeScript();
+    if (script) {
+      await this.context.addInitScript(script);
+    }
+
     const page = this.context.pages()[0] ?? await this.context.newPage();
     await importStorageState(this.context, page, this.options.storageState);
     await this.attachPage(page, true);
     this.sendLifecycle('connected');
+  }
+
+  private getRuntimeScript(): string {
+    const possiblePaths = [
+      path.resolve(__dirname, '../../browser/dist/design-mode-runtime.global.js'),
+      path.resolve(process.cwd(), 'packages/browser/dist/design-mode-runtime.global.js'),
+      path.resolve(__dirname, '../runtime/design-mode-runtime.global.js'),
+    ];
+    for (const p of possiblePaths) {
+      if (fs.existsSync(p)) {
+        return fs.readFileSync(p, 'utf8');
+      }
+    }
+    return '';
   }
 
   async stop(): Promise<void> {
@@ -160,7 +182,15 @@ export class PlaywrightProvider {
       }
       case 'browser_screenshot': {
         const target = this.resolveTarget(command.targetId);
-        const data = await target.page.screenshot({ fullPage: command.fullPage ?? false });
+        let data: Buffer;
+        if (command.selector) {
+          const locator = target.page.locator(command.selector).first();
+          data = await locator.screenshot();
+        } else if (command.clip) {
+          data = await target.page.screenshot({ clip: command.clip });
+        } else {
+          data = await target.page.screenshot({ fullPage: command.fullPage ?? false });
+        }
         const viewport = target.page.viewportSize();
         return {
           data: `data:image/png;base64,${data.toString('base64')}`,
@@ -168,6 +198,159 @@ export class PlaywrightProvider {
           height: viewport?.height ?? 0,
         };
       }
+      case 'browser_interactive_snapshot': {
+        const target = this.resolveTarget(command.targetId);
+        const elements = await target.page.evaluate(() => {
+          const query = 'button, a[href], input, select, textarea, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [tabindex]:not([tabindex="-1"])';
+          const candidates = Array.from(document.querySelectorAll(query)) as HTMLElement[];
+          const visible = candidates.filter((el) => {
+            const rect = el.getBoundingClientRect();
+            const style = window.getComputedStyle(el);
+            return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+          });
+          return visible.slice(0, 100).map((el, index) => {
+            const rect = el.getBoundingClientRect();
+            let selector = el.id ? `#${el.id}` : el.localName;
+            if (el.className && typeof el.className === 'string') {
+              const first = el.className.trim().split(/\s+/)[0];
+              if (first && !first.includes(':')) selector += `.${first}`;
+            }
+            return {
+              ref: `@e${index + 1}`,
+              role: el.getAttribute('role') || el.localName,
+              name: el.getAttribute('aria-label') || el.getAttribute('name') || undefined,
+              tag: el.localName,
+              text: (el.textContent || (el as HTMLInputElement).value || '').trim().slice(0, 80),
+              bounds: {
+                x: Math.round(rect.left + window.scrollX),
+                y: Math.round(rect.top + window.scrollY),
+                width: Math.round(rect.width),
+                height: Math.round(rect.height),
+              },
+              selector,
+              xpath: '',
+              disabled: (el as HTMLButtonElement).disabled || false,
+              value: (el as HTMLInputElement).value || undefined,
+            };
+          });
+        });
+        target.elementRefs.clear();
+        for (const el of elements) {
+          target.elementRefs.set(el.ref, { selector: el.selector, text: el.text, tag: el.tag });
+        }
+        return { elements };
+      }
+      case 'browser_click': {
+        const target = this.resolveTarget(command.targetId);
+        let selector = command.selector;
+        if (command.ref) {
+          const refData = target.elementRefs.get(command.ref);
+          if (refData) selector = refData.selector;
+          else selector = command.ref;
+        }
+        if (!selector) throw new Error('Missing selector or ref for browser_click');
+        await target.page.locator(selector).first().click();
+        let snapshotAfter = undefined;
+        if (command.snapshotAfter) {
+          snapshotAfter = await this.executeCommand({
+            type: 'browser_interactive_snapshot',
+            requestId: `${command.requestId}-snap`,
+            providerId: command.providerId,
+            targetId: command.targetId,
+          } as BrowserCommandMessage);
+        }
+        return { clicked: true, selector, snapshot: snapshotAfter };
+      }
+      case 'browser_fill': {
+        const target = this.resolveTarget(command.targetId);
+        let selector = command.selector;
+        if (command.ref) {
+          const refData = target.elementRefs.get(command.ref);
+          if (refData) selector = refData.selector;
+          else selector = command.ref;
+        }
+        if (!selector) throw new Error('Missing selector or ref for browser_fill');
+        await target.page.locator(selector).first().fill(command.text);
+        let snapshotAfter = undefined;
+        if (command.snapshotAfter) {
+          snapshotAfter = await this.executeCommand({
+            type: 'browser_interactive_snapshot',
+            requestId: `${command.requestId}-snap`,
+            providerId: command.providerId,
+            targetId: command.targetId,
+          } as BrowserCommandMessage);
+        }
+        return { filled: true, selector, text: command.text, snapshot: snapshotAfter };
+      }
+      case 'browser_preview_patch': {
+        const target = this.resolveTarget(command.targetId);
+        if (command.clear) {
+          await target.page.evaluate(() => {
+            const api = (window as unknown as { __agentBridgeDesignMode?: { clearLivePatch?: () => void } }).__agentBridgeDesignMode;
+            if (api?.clearLivePatch) api.clearLivePatch();
+            else document.getElementById('__agent_bridge_live_preview__')?.remove();
+          });
+          return { cleared: true };
+        }
+        if (command.cssPatch) {
+          await target.page.evaluate((css) => {
+            const api = (window as unknown as { __agentBridgeDesignMode?: { applyLivePatch?: (c: string) => void } }).__agentBridgeDesignMode;
+            if (api?.applyLivePatch) {
+              api.applyLivePatch(css);
+            } else {
+              let s = document.getElementById('__agent_bridge_live_preview__') as HTMLStyleElement | null;
+              if (!s) {
+                s = document.createElement('style');
+                s.id = '__agent_bridge_live_preview__';
+                document.head.appendChild(s);
+              }
+              s.textContent = css;
+            }
+          }, command.cssPatch);
+          return { applied: true, cssPatch: command.cssPatch };
+        }
+        return { applied: false };
+      }
+      case 'browser_design_mode': {
+        const target = this.resolveTarget(command.targetId);
+        const script = this.getRuntimeScript();
+        if (script) {
+          await target.page.evaluate((src) => {
+            if (!(window as unknown as { __agentBridgeDesignMode?: unknown }).__agentBridgeDesignMode) {
+              const s = document.createElement('script');
+              s.textContent = src;
+              document.head.appendChild(s);
+            }
+          }, script);
+        }
+        if (command.action === 'enable') {
+          const snap = await target.page.evaluate(() => {
+            const api = (window as unknown as { __agentBridgeDesignMode?: { enable?: () => unknown } }).__agentBridgeDesignMode;
+            return api?.enable?.();
+          });
+          return { enabled: true, snapshot: snap };
+        } else if (command.action === 'disable') {
+          const snap = await target.page.evaluate(() => {
+            const api = (window as unknown as { __agentBridgeDesignMode?: { disable?: () => unknown } }).__agentBridgeDesignMode;
+            return api?.disable?.();
+          });
+          return { enabled: false, snapshot: snap };
+        } else if (command.action === 'status') {
+          const snap = await target.page.evaluate(() => {
+            const api = (window as unknown as { __agentBridgeDesignMode?: { status?: () => unknown } }).__agentBridgeDesignMode;
+            return api?.status?.();
+          });
+          return { snapshot: snap };
+        } else if (command.action === 'get_handoff') {
+          const handoff = await target.page.evaluate((change) => {
+            const api = (window as unknown as { __agentBridgeDesignMode?: { getHandoff?: (c?: string) => unknown } }).__agentBridgeDesignMode;
+            return api?.getHandoff?.(change);
+          }, command.requestedChange);
+          return { handoff };
+        }
+        throw new Error(`Unknown design mode action: ${command.action}`);
+      }
+
       case 'browser_network_get_response_body': {
         const request = this.networkRequests.get(command.networkRequestId);
         if (!request) throw new Error(`Unknown network request: ${command.networkRequestId}`);
@@ -198,6 +381,7 @@ export class PlaywrightProvider {
       page,
       cdp,
       ref: await this.buildTargetRef(id, page, select),
+      elementRefs: new Map(),
     };
 
     this.targets.set(id, target);
