@@ -5,6 +5,7 @@ export * from './commands';
 export * from './results';
 export * from './browser';
 export * from './feedback';
+export * from './design-mode';
 
 import type { HelloMessage, CapabilitiesMessage } from './connection';
 import type {
