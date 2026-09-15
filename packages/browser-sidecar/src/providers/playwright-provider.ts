@@ -210,10 +210,34 @@ export class PlaywrightProvider {
           });
           return visible.slice(0, 100).map((el, index) => {
             const rect = el.getBoundingClientRect();
-            let selector = el.id ? `#${el.id}` : el.localName;
-            if (el.className && typeof el.className === 'string') {
-              const first = el.className.trim().split(/\s+/)[0];
-              if (first && !first.includes(':')) selector += `.${first}`;
+            let selector = '';
+            const dm = (window as unknown as { __agentBridgeDesignMode?: { selectorsFor?: (e: Element) => string[] } }).__agentBridgeDesignMode;
+            if (dm?.selectorsFor) {
+              const list = dm.selectorsFor(el);
+              if (list && list.length > 0) selector = list[0];
+            }
+            if (!selector) {
+              const testId = el.getAttribute('data-testid') || el.getAttribute('data-test');
+              if (testId) {
+                selector = `[data-testid="${testId}"]`;
+              } else if (el.id) {
+                selector = `#${el.id}`;
+              } else if (el.getAttribute('name')) {
+                selector = `${el.localName}[name="${el.getAttribute('name')}"]`;
+              } else if (el.getAttribute('href')) {
+                selector = `${el.localName}[href="${el.getAttribute('href')}"]`;
+              } else {
+                const parent = el.parentElement;
+                let nth = 1;
+                if (parent) {
+                  let sib = el.previousElementSibling;
+                  while (sib) {
+                    if (sib.localName === el.localName) nth++;
+                    sib = sib.previousElementSibling;
+                  }
+                }
+                selector = `${el.localName}:nth-of-type(${nth})`;
+              }
             }
             return {
               ref: `@e${index + 1}`,
@@ -249,9 +273,26 @@ export class PlaywrightProvider {
           else selector = command.ref;
         }
         if (!selector) throw new Error('Missing selector or ref for browser_click');
-        await target.page.locator(selector).first().click();
+        const locator = target.page.locator(selector);
+        const count = await locator.count();
+        if (count > 1 && command.ref) {
+          const refIndex = parseInt(command.ref.replace(/^@e/, ''), 10) - 1;
+          await target.page.evaluate((idx) => {
+            const query = 'button, a[href], input, select, textarea, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [tabindex]:not([tabindex="-1"])';
+            const candidates = Array.from(document.querySelectorAll(query)) as HTMLElement[];
+            const visible = candidates.filter((el) => {
+              const rect = el.getBoundingClientRect();
+              const style = window.getComputedStyle(el);
+              return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+            });
+            visible[idx]?.click();
+          }, refIndex);
+        } else {
+          await locator.first().click();
+        }
         let snapshotAfter = undefined;
         if (command.snapshotAfter) {
+          await target.page.waitForTimeout(250);
           snapshotAfter = await this.executeCommand({
             type: 'browser_interactive_snapshot',
             requestId: `${command.requestId}-snap`,
@@ -270,9 +311,32 @@ export class PlaywrightProvider {
           else selector = command.ref;
         }
         if (!selector) throw new Error('Missing selector or ref for browser_fill');
-        await target.page.locator(selector).first().fill(command.text);
+        const locator = target.page.locator(selector);
+        const count = await locator.count();
+        if (count > 1 && command.ref) {
+          const refIndex = parseInt(command.ref.replace(/^@e/, ''), 10) - 1;
+          await target.page.evaluate(({ idx, val }) => {
+            const query = 'button, a[href], input, select, textarea, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [tabindex]:not([tabindex="-1"])';
+            const candidates = Array.from(document.querySelectorAll(query)) as HTMLElement[];
+            const visible = candidates.filter((el) => {
+              const rect = el.getBoundingClientRect();
+              const style = window.getComputedStyle(el);
+              return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+            });
+            const input = visible[idx] as HTMLInputElement;
+            if (input) {
+              input.focus();
+              input.value = val;
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+          }, { idx: refIndex, val: command.text });
+        } else {
+          await locator.first().fill(command.text);
+        }
         let snapshotAfter = undefined;
         if (command.snapshotAfter) {
+          await target.page.waitForTimeout(250);
           snapshotAfter = await this.executeCommand({
             type: 'browser_interactive_snapshot',
             requestId: `${command.requestId}-snap`,
