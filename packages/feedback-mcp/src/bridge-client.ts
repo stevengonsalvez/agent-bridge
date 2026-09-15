@@ -91,6 +91,26 @@ export class BridgeFeedbackClient {
     await this.send({ type: enabled ? 'ui_feedback_enable' : 'ui_feedback_disable' });
   }
 
+  async sendBrowserCommand<T = unknown>(command: OutboundBridgePayload, timeoutMs = 15000): Promise<T> {
+    const requestId = (command.requestId as string) || `mcp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const payload = {
+      requestId,
+      sessionId: this.options.sessionId,
+      origin: 'agent',
+      ...command,
+    };
+    const promise = this.waitFor(
+      (message): message is BridgeMessage => message.type === 'browser_result' && (message as Record<string, unknown>).requestId === requestId,
+      timeoutMs
+    );
+    await this.send(payload);
+    const resultMsg = (await promise) as unknown as { success: boolean; result?: T; error?: { message: string } };
+    if (resultMsg.success) {
+      return resultMsg.result as T;
+    }
+    throw new Error(resultMsg.error?.message || 'Browser command failed');
+  }
+
   async sendSuggestion(args: {
     batchId: string;
     itemId: string;
