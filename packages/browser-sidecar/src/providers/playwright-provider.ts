@@ -414,6 +414,41 @@ export class PlaywrightProvider {
             return api?.getHandoff?.(change);
           }, command.requestedChange);
           return { handoff };
+        } else if (command.action === 'quick_render') {
+          await target.page.evaluate((css) => {
+            const api = (window as unknown as { __agentBridgeDesignMode?: { quickRender?: (c?: string) => void } }).__agentBridgeDesignMode;
+            api?.quickRender?.(css);
+          }, command.cssPatch);
+          const snap = await target.page.evaluate(() => {
+            const api = (window as unknown as { __agentBridgeDesignMode?: { status?: () => unknown } }).__agentBridgeDesignMode;
+            return api?.status?.();
+          });
+          return { rendered: true, snapshot: snap };
+        } else if (command.action === 'copy_prompt') {
+          const result = await target.page.evaluate(async (change) => {
+            const api = (window as unknown as {
+              __agentBridgeDesignMode?: {
+                copyHandoffToClipboard?: (c?: string) => Promise<boolean>;
+                getFormattedPrompt?: (c?: string) => string;
+              };
+            }).__agentBridgeDesignMode;
+            const prompt = api?.getFormattedPrompt?.(change) || '';
+            const copied = await api?.copyHandoffToClipboard?.(change);
+            return { copied: Boolean(copied), prompt };
+          }, command.requestedChange);
+          return result;
+        } else if (command.action === 'clear_preview') {
+          await target.page.evaluate(() => {
+            const api = (window as unknown as { __agentBridgeDesignMode?: { clearLivePatch?: () => void } }).__agentBridgeDesignMode;
+            api?.clearLivePatch?.();
+          });
+          return { cleared: true };
+        } else if (command.action === 'clear_selections') {
+          await target.page.evaluate(() => {
+            const api = (window as unknown as { __agentBridgeDesignMode?: { clearSelections?: () => void } }).__agentBridgeDesignMode;
+            api?.clearSelections?.();
+          });
+          return { cleared: true };
         }
         throw new Error(`Unknown design mode action: ${command.action}`);
       }
