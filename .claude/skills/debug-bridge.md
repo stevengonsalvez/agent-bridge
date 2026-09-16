@@ -1,188 +1,76 @@
 # Debug Bridge CLI
 
-Debug bridge for interacting with web applications. Requires a browser running the app with the `@debug-bridge/browser` SDK.
+Debug Bridge provides autonomous browser control, visual feedback annotations, and in-browser Design Mode for AI agents.
 
-## Starting the CLI
+## Quick Start (Zero-Instrumentation Sidecar)
 
-```bash
-# JSON mode (for Claude) - outputs JSONL, accepts JSON commands via stdin
-node packages/cli/dist/bin/cli.js connect --port 4000 --session my-session --json
-
-# Human mode (interactive REPL)
-node packages/cli/dist/bin/cli.js connect --port 4000 --session my-session
-```
-
-**Important**: The web app must be opened with matching session/port query params:
-```
-http://localhost:3000?session=my-session&port=4000
-```
-
-## JSON Mode Protocol
-
-### Output Events (stdout, one JSON per line)
-
-```jsonl
-{"event":"server_started","url":"ws://localhost:4000/debug","session":"my-session"}
-{"event":"app_connected","appName":"My App","appVersion":"0.1.0","url":"http://localhost:3000/"}
-{"event":"telemetry","type":"ui_tree","itemCount":47,"items":[...]}
-{"event":"telemetry","type":"state_update","scope":"auth","state":{"isLoggedIn":false}}
-{"event":"command_result","requestId":"1","success":true,"duration":12}
-```
-
-### Input Commands (stdin, JSON)
-
-**Click an element:**
-```json
-{"type":"click","requestId":"1","target":{"stableId":"login-button"}}
-```
-
-**Type text:**
-```json
-{"type":"type","requestId":"2","target":{"stableId":"email-input"},"text":"user@example.com","options":{"clear":true}}
-```
-
-**Navigate:**
-```json
-{"type":"navigate","requestId":"3","url":"/products"}
-```
-
-**Request UI tree:**
-```json
-{"type":"request_ui_tree","requestId":"4"}
-```
-
-**Request app state:**
-```json
-{"type":"request_state","requestId":"5","scope":"cart"}
-```
-
-**Scroll:**
-```json
-{"type":"scroll","requestId":"6","x":0,"y":500}
-```
-
-**Hover:**
-```json
-{"type":"hover","requestId":"7","target":{"stableId":"dropdown-menu"}}
-```
-
-**Select dropdown:**
-```json
-{"type":"select","requestId":"8","target":{"stableId":"country-select"},"value":"US"}
-```
-
-**Focus element:**
-```json
-{"type":"focus","requestId":"9","target":{"stableId":"search-input"}}
-```
-
-**Evaluate JS (if enabled):**
-```json
-{"type":"evaluate","requestId":"10","code":"document.title"}
-```
-
-## Target Resolution
-
-Elements can be targeted by (in priority order):
-1. `stableId` - matches `data-testid` attribute or element `id`
-2. `selector` - CSS selector
-3. `text` - text content (for buttons/links)
-
-```json
-{"target":{"stableId":"submit-btn"}}
-{"target":{"selector":"#app button.primary"}}
-{"target":{"text":"Sign In"}}
-```
-
-## UI Tree Items
-
-Each item in the UI tree contains:
-```json
-{
-  "stableId": "login-button",
-  "selector": "button#login",
-  "role": "button",
-  "text": "Sign In",
-  "label": "Sign in to your account",
-  "disabled": false,
-  "visible": true,
-  "meta": {
-    "tagName": "button",
-    "type": "submit"
-  }
-}
-```
-
-## Error Codes
-
-- `TARGET_NOT_FOUND` - Element not found
-- `TARGET_NOT_VISIBLE` - Element hidden
-- `TARGET_DISABLED` - Element disabled
-- `EVAL_DISABLED` - JS eval not enabled
-- `INVALID_COMMAND` - Unknown command type
-
-## Claude Usage Pattern (via tmux)
-
-Since the CLI requires bidirectional communication, use tmux with named pipes:
+Launch and control any web app without code modifications:
 
 ```bash
-# 1. Setup
-PORT=4000
-SESSION=debug-$(date +%s)
-PIPE=/tmp/debug-bridge-$SESSION
+# 1. Start bridge server with CDP browser sidecar
+PORT=$(shuf -i 4000-4999 -n 1)
+SESSION="dev-session-$(date +%s)"
+debug-bridge connect --port $PORT --session $SESSION --cdp --browser managed &
 
-mkfifo $PIPE
-tmux new-session -d -s $SESSION
+# 2. Open URL in managed browser
+debug-bridge browser open "http://localhost:3000" --port $PORT --session $SESSION
 
-# 2. Start CLI reading from pipe, writing to log
-tmux send-keys -t $SESSION "tail -f $PIPE | node packages/cli/dist/bin/cli.js connect --port $PORT --session $SESSION --json > /tmp/debug-bridge-$SESSION.log 2>&1" C-m
+# 3. Inspect interactive elements (@e1, @e2, ...)
+debug-bridge browser snapshot --port $PORT --session $SESSION
 
-# 3. Send a command
-echo '{"type":"request_ui_tree","requestId":"1"}' > $PIPE
+# 4. Click or fill inputs
+debug-bridge browser click @e1 --port $PORT --session $SESSION
+debug-bridge browser fill @e2 "user@example.com" --port $PORT --session $SESSION
 
-# 4. Read output
-cat /tmp/debug-bridge-$SESSION.log
+# 5. Capture screenshot
+debug-bridge browser screenshot --out ./screenshot.png --port $PORT --session $SESSION
 
-# 5. Cleanup
-tmux kill-session -t $SESSION
-rm $PIPE
+# 6. Apply live temporary CSS preview patch
+debug-bridge browser preview-patch --css "header { background: #0f172a !important; }" --port $PORT --session $SESSION
 ```
 
-**Simpler alternative** - use the human REPL mode and parse output:
+## In-Browser Design Mode (cmux-style)
+
+Click elements, tweak styles live, inspect anchored XPaths, batch multiple element tweaks, quick render live preview patches, and copy paste-ready prompts for agents:
+
 ```bash
-# Start in tmux
-tmux new-session -d -s debug-cli
-tmux send-keys -t debug-cli "node packages/cli/dist/bin/cli.js connect --port 4000 --session test" C-m
+# Enable design mode in browser
+debug-bridge browser design-mode enable --port $PORT --session $SESSION
 
-# Send command (human mode accepts simple commands)
-tmux send-keys -t debug-cli "click login-button" C-m
-tmux send-keys -t debug-cli "ui" C-m
+# Check status and current selections
+debug-bridge browser design-mode status --port $PORT --session $SESSION
 
-# Read output
-tmux capture-pane -t debug-cli -p
+# Trigger Quick Render from CLI (injects live CSS patch)
+debug-bridge browser design-mode quick-render --port $PORT --session $SESSION
+
+# Copy formatted prompt to clipboard (or stdout)
+debug-bridge browser design-mode copy-prompt -r "Make header dark navy and enlarge CTA" --port $PORT --session $SESSION
+
+# Retrieve structured handoff payload
+debug-bridge browser design-mode handoff -r "Apply visual adjustments" --json --port $PORT --session $SESSION
+
+# Clear live preview and selections
+debug-bridge browser design-mode clear --port $PORT --session $SESSION
+
+# Disable design mode
+debug-bridge browser design-mode disable --port $PORT --session $SESSION
 ```
 
-## Browser Requirement
+### Design Mode Floating Composer Features:
+- **Multi-Element Batching**: Selection chips (`[@e1 <header>]`, `[@e2 <button>]`) with 14-color palette.
+- **Property Tweakers**: Padding, margin, font-size, color, background-color, border-radius, and text content.
+- **⚡ Quick Render**: Injects live preview `<style id="__agent_bridge_live_preview__">` with `!important` declarations.
+- **📋 Copy for Agent**: Formats complete prompt with user instruction, page URL, each selected target (handle, tag, selector, full anchored XPath, property edits), and CSS diff block, copying directly to system clipboard.
+- **🚀 Send to Agent**: Dispatches structured batch handoff event to the agent bridge host.
 
-A browser MUST be running the web app with the debug-bridge SDK. Without a browser, there's nothing to interact with.
+## Feedback MCP Server (Claude Code Integration)
 
-**Options:**
-1. **Manual** - User opens browser to `http://localhost:3000?session=test&port=4000`
-2. **Playwright** - Use webapp-testing skill to launch headless browser:
-   ```bash
-   # Playwright can navigate to the app URL
-   # The debug-bridge SDK in the app will auto-connect to CLI
-   ```
+```bash
+# Run MCP server for Claude Code
+npx debug-bridge-feedback-mcp --bridge-port 4000 --session default
+```
 
-## Integration with webapp-testing Skill
-
-Debug-bridge complements Playwright by providing:
-- **Richer telemetry**: App state, console logs, errors
-- **Stable IDs**: `data-testid` based targeting
-- **State awareness**: Know auth status, cart contents, etc.
-
-Workflow:
-1. Start debug-bridge CLI (port 4000, session X)
-2. Use Playwright to open `http://localhost:3000?session=X&port=4000`
-3. CLI receives telemetry from app
-4. Use either CLI commands OR Playwright for interactions
+Available tools:
+- `browser_control`: open, click, fill, screenshot, snapshot, preview_patch
+- `design_mode_control`: enable, disable, status, quick_render, copy_prompt, get_handoff, clear_preview, clear_selections
+- `feedback_annotation`: visual pins, notes, highlights, and batch triage

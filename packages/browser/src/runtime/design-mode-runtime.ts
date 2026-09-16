@@ -55,7 +55,6 @@
     selector: string;
     selectors: string[];
     xpath: string;
-    identity: string;
     originalText: string;
     originalStyles: Record<string, string>;
   };
@@ -184,18 +183,6 @@
       unique.push(structuralSelector(element));
     }
     return unique;
-  };
-
-  const identityFor = (element: Element): string => {
-    const parent = element.parentElement;
-    return [
-      element.localName || '',
-      element.getAttribute('role') || '',
-      element.getAttribute('type') || '',
-      String(element.childElementCount || 0),
-      parent?.localName || '',
-      (parent as HTMLElement | null)?.id || '',
-    ].join('|');
   };
 
   const isSensitive = (element: Element): boolean => {
@@ -648,7 +635,6 @@
       selector: allSelectors[0],
       selectors: allSelectors,
       xpath: xpathFor(element),
-      identity: identityFor(element),
       originalText: isSensitive(element) ? redactedValue : (element.textContent || '').trim(),
       originalStyles: captureStyles(element),
     };
