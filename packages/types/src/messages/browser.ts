@@ -141,8 +141,17 @@ export type BrowserPreviewPatchCommand = BrowserCommandBase & {
 
 export type BrowserDesignModeCommand = BrowserCommandBase & {
   type: 'browser_design_mode';
-  action: 'enable' | 'disable' | 'status' | 'get_handoff';
+  action:
+    | 'enable'
+    | 'disable'
+    | 'status'
+    | 'get_handoff'
+    | 'quick_render'
+    | 'copy_prompt'
+    | 'clear_preview'
+    | 'clear_selections';
   requestedChange?: string;
+  cssPatch?: string;
 };
 
 export type BrowserNetworkGetResponseBodyCommand = BrowserCommandBase & {
