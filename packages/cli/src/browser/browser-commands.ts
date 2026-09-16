@@ -204,27 +204,52 @@ export function registerBrowserCommands(program: Command): void {
 
   browserCmd
     .command('design-mode [action]')
-    .description('Control in-browser Design Mode (enable, disable, status, handoff)')
-    .option('-r, --request <text>', 'Requested change description for handoff', '')
+    .description('Control in-browser Design Mode (enable, disable, status, handoff, quick-render, copy-prompt, clear)')
+    .option('-r, --request <text>', 'Requested change description for handoff or prompt', '')
+    .option('--css <string>', 'Optional custom CSS patch for quick-render')
+    .option('-c, --copy', 'Copy prompt to clipboard', false)
     .option('-p, --port <number>', 'Bridge port', '4000')
     .option('-s, --session <string>', 'Session ID', 'default')
     .option('--json', 'Output result as JSON', false)
     .action(async (action = 'status', opts) => {
       const port = parseInt(opts.port, 10);
-      const act = action as 'enable' | 'disable' | 'status' | 'get_handoff';
+      let act:
+        | 'enable'
+        | 'disable'
+        | 'status'
+        | 'get_handoff'
+        | 'quick_render'
+        | 'copy_prompt'
+        | 'clear_preview'
+        | 'clear_selections' = 'status';
+
+      if (action === 'enable') act = 'enable';
+      else if (action === 'disable') act = 'disable';
+      else if (action === 'status') act = 'status';
+      else if (action === 'handoff' || action === 'get_handoff') act = 'get_handoff';
+      else if (action === 'quick-render' || action === 'quick_render') act = 'quick_render';
+      else if (action === 'copy-prompt' || action === 'copy_prompt' || opts.copy) act = 'copy_prompt';
+      else if (action === 'clear' || action === 'clear-selections') act = 'clear_selections';
+      else if (action === 'clear-preview') act = 'clear_preview';
+
       const res = await sendBrowserCommand(
         {
           type: 'browser_design_mode',
-          action: act === ('handoff' as unknown) ? 'get_handoff' : act,
+          action: act,
           requestedChange: opts.request,
+          cssPatch: opts.css,
         },
         { port, session: opts.session }
       );
 
       if (opts.json) {
         console.log(JSON.stringify(res, null, 2));
+      } else if (act === 'copy_prompt') {
+        const payload = res as { copied?: boolean; prompt?: string };
+        console.log(payload.copied ? 'Prompt copied to clipboard:' : 'Generated prompt:');
+        console.log(payload.prompt || JSON.stringify(res, null, 2));
       } else {
-        console.log(`Design mode (${action}):`, JSON.stringify(res, null, 2));
+        console.log(`Design mode (${act}):`, JSON.stringify(res, null, 2));
       }
     });
 

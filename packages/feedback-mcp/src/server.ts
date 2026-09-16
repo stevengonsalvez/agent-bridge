@@ -436,18 +436,30 @@ export function createFeedbackMcpServer(options: FeedbackMcpOptions): {
     'design_mode_control',
     {
       title: 'Control Design Mode',
-      description: 'Enable, disable, check status, or retrieve structured handoff from in-browser Design Mode.',
+      description:
+        'Enable, disable, check status, trigger quick-render, copy formatted prompt, or retrieve structured handoff from in-browser Design Mode.',
       inputSchema: z.object({
-        action: z.enum(['enable', 'disable', 'status', 'get_handoff']),
+        action: z.enum([
+          'enable',
+          'disable',
+          'status',
+          'get_handoff',
+          'quick_render',
+          'copy_prompt',
+          'clear_preview',
+          'clear_selections',
+        ]),
         requestedChange: z.string().optional(),
+        cssPatch: z.string().optional(),
       }),
     },
-    async ({ action, requestedChange }) => {
+    async ({ action, requestedChange, cssPatch }) => {
       try {
         const res = await client.sendBrowserCommand({
           type: 'browser_design_mode',
           action,
           requestedChange,
+          cssPatch,
         });
         return jsonResult(res as JsonRecord);
       } catch (error) {
