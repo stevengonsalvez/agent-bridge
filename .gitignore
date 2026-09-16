@@ -14,6 +14,7 @@ coverage/
 logs/
 .debug-bridge/feedback/
 .tmux-dev-session.json
+recordings/
 
 # Agent scratch state (local only)
 .agents/goals/

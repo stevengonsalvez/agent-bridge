@@ -70,8 +70,11 @@ export class PlaywrightProvider {
       this.context = this.browser.contexts()[0] ?? await this.browser.newContext();
     } else {
       const profileDir = new ProfileStore().resolve(this.options.profile);
+      const recordDir = process.env.DEBUG_BRIDGE_RECORD_VIDEO_DIR;
       this.context = await chromium.launchPersistentContext(profileDir, {
         headless: this.options.headless,
+        viewport: { width: 1280, height: 720 },
+        ...(recordDir ? { recordVideo: { dir: recordDir, size: { width: 1280, height: 720 } } } : {}),
       });
     }
 
