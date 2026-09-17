@@ -40,7 +40,7 @@ program
   .command('connect')
   .description('Start server and connect to an app')
   .option('-p, --port <number>', 'Port to listen on', '4000')
-  .option('-s, --session <string>', 'Session ID', 'default')
+  .option('-s, --session <string>', 'Internal bridge session ID (browser page URLs do not need query params)', 'default')
   .option('--json', 'Output JSON (for Claude Code)', false)
   .option('--host <string>', 'Host to bind to', 'localhost')
   .option('--cdp', 'Start a CDP browser sidecar provider', false)
