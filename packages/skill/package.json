@@ -1,0 +1,55 @@
+{
+  "name": "debug-bridge-skill",
+  "version": "0.2.0",
+  "description": "Installer and package for the Debug Bridge AI agent skill (Claude Code, Gemini, Cursor, Codex)",
+  "author": "stevengonsalvez",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stevengonsalvez/agent-bridge"
+  },
+  "keywords": [
+    "debug-bridge",
+    "ai-agent",
+    "skill",
+    "claude-code",
+    "cursor",
+    "codex",
+    "gemini",
+    "antigravity",
+    "browser-automation"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "bin": {
+    "debug-bridge-skill": "./dist/bin/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "SKILL.md"
+  ],
+  "scripts": {
+    "build": "tsup && cp ../../skills/debug-bridge/SKILL.md ./SKILL.md && cp ../../skills/debug-bridge/SKILL.md ./dist/SKILL.md",
+    "dev": "tsup --watch",
+    "start": "node dist/bin/cli.js",
+    "clean": "rm -rf dist",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  }
+}
