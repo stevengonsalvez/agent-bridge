@@ -1,8 +1,10 @@
 # Debug Bridge
 
-AI-friendly debugging for web applications. Enables LLM agents to inspect, interact with, and control web apps via WebSocket.
+AI-friendly debugging, autonomous browser control, visual feedback annotations, and in-browser Design Mode for web applications. Enables LLM agents to inspect, interact with, and control web apps.
 
-## Quick Start
+## Quick Start (Zero-Instrumentation Sidecar - Recommended)
+
+No code modifications needed in your application. Debug Bridge drives a managed browser via CDP and exposes numbered interactive handles (`@e1`, `@e2`), live CSS preview patches, and in-browser Design Mode with multi-element batching.
 
 ### 1. Install the CLI
 
@@ -10,7 +12,61 @@ AI-friendly debugging for web applications. Enables LLM agents to inspect, inter
 npm install -g debug-bridge-cli
 ```
 
-### 2. Add to your web app
+### 2. Start Bridge Server with Browser Sidecar
+
+```bash
+# Start the bridge server with managed browser sidecar
+PORT=4000
+debug-bridge connect --port $PORT --cdp --browser managed
+```
+
+### 3. Open Your Web App
+
+Navigate to any local or remote web app. No query parameters (`?session=`, `?port=`) are needed:
+
+```bash
+# Open URL in managed browser
+debug-bridge browser open "http://localhost:5173" --port 4000
+```
+
+### 4. Inspect, Control, and Patch
+
+```bash
+# Capture numbered interactive elements tree (@e1, @e2, ...)
+debug-bridge browser snapshot --port 4000
+
+# Click or fill elements by handle or selector
+debug-bridge browser click @e1 --port 4000
+debug-bridge browser fill @e2 "user@example.com" --port 4000
+
+# Capture screenshot
+debug-bridge browser screenshot --out ./screenshot.png --port 4000
+
+# Inject temporary CSS preview patch
+debug-bridge browser preview-patch --css "button { background: #2563eb !important; }" --port 4000
+```
+
+### 5. In-Browser Design Mode (cmux-style)
+
+```bash
+# Enable in-browser Design Mode
+debug-bridge browser design-mode enable --port 4000
+
+# Inspect selections and triggered tweaks
+debug-bridge browser design-mode status --port 4000
+
+# Inject live quick render preview styles
+debug-bridge browser design-mode quick-render --port 4000
+
+# Copy formatted batch prompt for agent to clipboard
+debug-bridge browser design-mode copy-prompt -r "Make header navy and enlarge CTA" --port 4000
+```
+
+---
+
+## Alternative: Optional Embedded Browser SDK
+
+For projects that want in-app telemetry or custom state providers directly inside their source tree:
 
 ```bash
 npm install debug-bridge-browser
@@ -20,14 +76,11 @@ npm install debug-bridge-browser
 // src/debug-bridge.ts
 import { createDebugBridge } from 'debug-bridge-browser';
 
+// Auto-connects in DEV without requiring query parameters
 if (import.meta.env.DEV) {
-  const params = new URLSearchParams(window.location.search);
-  const sessionId = params.get('session') || 'debug';
-  const port = params.get('port') || '4000';
-
   const bridge = createDebugBridge({
-    url: `ws://localhost:${port}/debug?role=app&sessionId=${sessionId}`,
-    sessionId,
+    url: 'ws://localhost:4000/debug?role=app&sessionId=default',
+    sessionId: 'default',
     appName: 'My App',
   });
 
@@ -35,64 +88,32 @@ if (import.meta.env.DEV) {
 }
 ```
 
-Import it in your app entry point:
+> **Note**: Page URLs stay clean (`http://localhost:5173/`). Query parameters like `?session=` or `?port=` are never required.
 
-```typescript
-// main.tsx
-import './debug-bridge';
-```
-
-### 3. Start debugging
-
-```bash
-# Terminal 1: Start the debug server
-debug-bridge connect --session myapp
-
-# Terminal 2: Start your app
-npm run dev
-
-# Terminal 3: Open browser with debug params
-open "http://localhost:5173?session=myapp&port=4000"
-```
-
-### 4. Use CLI commands
-
-```
-debug> ui                    # Get UI tree (interactive elements)
-debug> find login            # Search for elements matching "login"
-debug> click button-abc123   # Click element by stableId
-debug> type input-xyz "hello" # Type text into input
-debug> screenshot            # Capture viewport
-debug> state                 # Get app state (cookies, localStorage, etc.)
-debug> eval document.title   # Execute JavaScript
-debug> help                  # Show all commands
-```
 
 ## Packages
 
 | Package | Description | Install |
 |---------|-------------|---------|
-| `debug-bridge-cli` | CLI with WebSocket server | `npm install -g debug-bridge-cli` |
-| `debug-bridge-browser` | Browser SDK | `npm install debug-bridge-browser` |
-| `debug-bridge-types` | TypeScript types | `npm install debug-bridge-types` |
+| `debug-bridge-cli` | CLI with WebSocket server & browser commands | `npm install -g debug-bridge-cli` |
+| `debug-bridge-browser-sidecar` | Playwright-driven CDP sidecar provider | `npm install debug-bridge-browser-sidecar` |
+| `debug-bridge-feedback-mcp` | MCP server for Claude Code and agent runners | `npm install debug-bridge-feedback-mcp` |
+| `debug-bridge-browser` | Optional in-app browser SDK | `npm install debug-bridge-browser` |
+| `debug-bridge-types` | TypeScript protocol definitions | `npm install debug-bridge-types` |
 
 ## How It Works
 
 ```
-┌─────────────────┐     WebSocket      ┌─────────────────┐
-│   Your Web App  │◄──────────────────►│  Debug Bridge   │
-│  (browser SDK)  │                    │     Server      │
-└─────────────────┘                    └────────┬────────┘
-                                                │
-                                       ┌────────▼────────┐
-                                       │    CLI / Agent  │
-                                       │  (sends cmds)   │
-                                       └─────────────────┘
+┌─────────────────┐       CDP / WS       ┌─────────────────┐       CDP / DOM      ┌─────────────────┐
+│    AI Agent     │ ◄──────────────────► │  Debug Bridge   │ ◄──────────────────► │ Target Browser  │
+│ (Claude/Codex)  │                      │ (Server+Sidecar)│                      │ (Pure Sidecar)  │
+└─────────────────┘                      └─────────────────┘                      └─────────────────┘
 ```
 
-1. **Browser SDK** connects to the Debug Bridge server via WebSocket
-2. **Server** routes messages between your app and the CLI/agent
-3. **CLI/Agent** sends commands (click, type, screenshot) and receives telemetry
+1. **Zero-Instrumentation (Default)**: Playwright CDP sidecar controls any web app directly from outside. URLs remain clean (`http://localhost:5173/`) without query parameters.
+2. **Design Mode (cmux-style)**: Injected inspector overlay supporting multi-element batching (`@e1`, `@e2`), live quick render style patches, and one-click copy prompt formatting.
+3. **Optional In-App SDK**: For teams wanting custom state providers or embedded feedback launcher inside development builds.
+
 
 ## Browser SDK Configuration
 
