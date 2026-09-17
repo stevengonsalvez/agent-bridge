@@ -34,6 +34,7 @@
   },
   "dependencies": {
     "debug-bridge-browser-sidecar": "workspace:*",
+    "debug-bridge-skill": "workspace:*",
     "debug-bridge-types": "workspace:*",
     "commander": "^12.1.0",
     "ws": "^8.18.0"
