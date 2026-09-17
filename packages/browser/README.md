@@ -13,21 +13,20 @@ npm install debug-bridge-browser
 ```typescript
 import { createDebugBridge } from 'debug-bridge-browser';
 
-// Only enable in development
+// Only enable in development (URLs stay clean, no query params needed)
 if (import.meta.env.DEV) {
-  const params = new URLSearchParams(window.location.search);
-  const sessionId = params.get('session') || 'debug';
-  const port = params.get('port') || '4000';
-
   const bridge = createDebugBridge({
-    url: `ws://localhost:${port}/debug?role=app&sessionId=${sessionId}`,
-    sessionId,
+    url: 'ws://localhost:4000/debug?role=app&sessionId=default',
+    sessionId: 'default',
     appName: 'My App',
   });
 
   bridge.connect();
 }
 ```
+
+> **Note**: Page URLs do not require query parameters (`?session=` or `?port=`). Clean URLs work out of the box.
+
 
 ## Configuration Options
 
