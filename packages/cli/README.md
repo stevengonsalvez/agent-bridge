@@ -74,6 +74,21 @@ debug-bridge browser design-mode quick-render --port 4000
 debug-bridge browser design-mode copy-prompt -r "Make header navy and enlarge CTA" --port 4000
 ```
 
+### 5. Install AI Agent Skill
+
+Install the Debug Bridge skill into Claude Code, Gemini / Antigravity, Cursor, Codex, or OpenCode:
+
+```bash
+# Auto-detect and install globally
+debug-bridge skill install
+
+# Or via standalone npm package
+npx debug-bridge-skill
+
+# Check status
+debug-bridge skill status
+```
+
 ### Interactive REPL Commands
 
 

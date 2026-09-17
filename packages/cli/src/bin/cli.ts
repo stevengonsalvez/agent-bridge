@@ -6,6 +6,7 @@ import { setupStdinHandler, updateCachedUiTree } from '../input/stdin-handler';
 import { createBrowserSidecar, type BrowserSidecar } from 'debug-bridge-browser-sidecar';
 import type { CliConfig, UiTreeMessage, UiTreeItem } from 'debug-bridge-types';
 import { registerBrowserCommands } from '../browser/browser-commands';
+import { registerSkillCommands } from '../skill/skill-commands';
 
 function printHelp(): void {
   console.log(`
@@ -35,6 +36,7 @@ program
   .version('0.1.0');
 
 registerBrowserCommands(program);
+registerSkillCommands(program);
 
 program
   .command('connect')
