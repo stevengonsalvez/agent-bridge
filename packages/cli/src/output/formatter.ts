@@ -257,9 +257,16 @@ function createHumanFormatter(): OutputFormatter {
       console.log('\n🔌 Debug Bridge v0.1.0');
       console.log('━'.repeat(50));
       console.log(`Server: ws://${config.host}:${config.port}/debug`);
-      console.log(`Session: ${config.session}`);
+      console.log(`Session: ${config.session} (internal bridge id)`);
       console.log('━'.repeat(50));
-      console.log('\nWaiting for app connection...');
+      if (config.cdp) {
+        console.log('Browser mode: Pure sidecar (zero-instrumentation).');
+        console.log('Open any page cleanly (no ?session= or ?port= query params needed):');
+        console.log(`  debug-bridge browser open "http://localhost:3000" --port ${config.port}\n`);
+      } else {
+        console.log('💡 Note: Browser page URLs require no query params (?session= not needed).\n');
+      }
+      console.log('Waiting for app connection...');
       console.log('Type "help" for available commands.\n');
     },
     appConnected: (hello) => {
