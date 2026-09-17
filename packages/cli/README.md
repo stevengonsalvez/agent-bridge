@@ -1,6 +1,6 @@
 # debug-bridge-cli
 
-CLI for debug-bridge - WebSocket server for AI agent debugging of web applications.
+CLI for debug-bridge: WebSocket server, autonomous browser control, and in-browser Design Mode for AI agents.
 
 ## Installation
 
@@ -11,32 +11,71 @@ npm install -g debug-bridge-cli
 Or run directly with npx:
 
 ```bash
-npx debug-bridge-cli connect --session myapp
+npx debug-bridge-cli connect --port 4000 --cdp --browser managed
 ```
 
-## Usage
+## Quick Start (Zero-Instrumentation Sidecar)
 
-### Start the Server
+No changes to your web application are required.
+
+### 1. Start Server with Browser Sidecar
 
 ```bash
-debug-bridge connect --session myapp
+debug-bridge connect --port 4000 --cdp --browser managed
 ```
 
-Options:
-- `-p, --port <number>` - Port to listen on (default: 4000)
-- `-s, --session <string>` - Session ID (default: 'default')
-- `--host <string>` - Host to bind to (default: 'localhost')
-- `--json` - Output JSON for programmatic use
+Key Options:
+- `-p, --port <number>`: Port to listen on (default: 4000)
+- `-s, --session <string>`: Internal bridge session ID for multiplexing (default: 'default')
+- `--cdp`: Enable Chrome DevTools Protocol sidecar provider
+- `--browser <mode>`: Browser sidecar mode: `managed`, `connect`, or `none` (default: `managed`)
+- `--headless`: Run managed browser headlessly (default: true)
+- `--headed`: Run managed browser with a visible window
+- `--json`: Output JSON for agent automation
 
-### Connect Your App
+> **Important**: The `--session` flag is an internal multiplexing identifier between the CLI and bridge server. Browser URLs require NO query parameters (`?session=` or `?port=`).
 
-Open your web app with debug params:
+### 2. Open App in Managed Browser
 
+```bash
+debug-bridge browser open "http://localhost:5173" --port 4000
 ```
-http://localhost:5173?session=myapp&port=4000
+
+### 3. Inspect, Click, and Patch
+
+```bash
+# Capture numbered interactive elements tree (@e1, @e2, ...)
+debug-bridge browser snapshot --port 4000
+
+# Click or fill elements by handle
+debug-bridge browser click @e1 --port 4000
+debug-bridge browser fill @e2 "user@example.com" --port 4000
+
+# Capture screenshot
+debug-bridge browser screenshot --out ./screenshot.png --port 4000
+
+# Inject temporary CSS preview patch
+debug-bridge browser preview-patch --css "button { background: #2563eb !important; }" --port 4000
 ```
 
-### Interactive Commands
+### 4. In-Browser Design Mode (cmux-style)
+
+```bash
+# Enable in-browser Design Mode
+debug-bridge browser design-mode enable --port 4000
+
+# Check status and current multi-element selections
+debug-bridge browser design-mode status --port 4000
+
+# Quick Render live styles into page
+debug-bridge browser design-mode quick-render --port 4000
+
+# Copy formatted prompt for agent to clipboard
+debug-bridge browser design-mode copy-prompt -r "Make header navy and enlarge CTA" --port 4000
+```
+
+### Interactive REPL Commands
+
 
 Once an app is connected, use these commands:
 
