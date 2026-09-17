@@ -96,6 +96,7 @@ if (import.meta.env.DEV) {
 | Package | Description | Install |
 |---------|-------------|---------|
 | `debug-bridge-cli` | CLI with WebSocket server & browser commands | `npm install -g debug-bridge-cli` |
+| `debug-bridge-skill` | Universal skill installer for Claude, Gemini, Cursor, Codex | `npx debug-bridge-skill` |
 | `debug-bridge-browser-sidecar` | Playwright-driven CDP sidecar provider | `npm install debug-bridge-browser-sidecar` |
 | `debug-bridge-feedback-mcp` | MCP server for Claude Code and agent runners | `npm install debug-bridge-feedback-mcp` |
 | `debug-bridge-browser` | Optional in-app browser SDK | `npm install debug-bridge-browser` |
@@ -173,9 +174,27 @@ Debug Bridge includes a skill/plugin system for seamless integration with AI cod
 
 ### Installation for AI Assistants
 
-#### Claude Code (Recommended)
+#### Universal: Automatic npm Installer (Recommended)
 
-**Method 1: From GitHub Marketplace (Recommended)**
+Install the Debug Bridge skill into all detected agent environments (Claude Code, Gemini/Antigravity, Cursor, Codex, OpenCode) with a single command:
+
+```bash
+npx debug-bridge-skill
+```
+
+Or if `debug-bridge-cli` is installed:
+
+```bash
+debug-bridge skill install
+```
+
+Options:
+- `npx debug-bridge-skill --project` : Install locally to current repository (`.claude`, `.cursor`, `.github`)
+- `npx debug-bridge-skill --agent claude,gemini` : Target specific assistants
+- `npx debug-bridge-skill status` : Inspect skill installation status
+- `npx debug-bridge-skill print \| claude` : Pipe skill instructions directly to Claude Code
+
+#### Claude Code (Marketplace Alternative)
 
 ```bash
 # 1. Add the agent-bridge marketplace
@@ -185,46 +204,12 @@ Debug Bridge includes a skill/plugin system for seamless integration with AI cod
 /plugin install debug-bridge@agent-bridge-marketplace
 ```
 
-**Method 2: Local Development/Testing**
-
-```bash
-# Use during development or testing
-claude --plugin-dir /path/to/agent-bridge
-```
-
-**Method 3: Manual Installation**
-
-```bash
-# Clone and manually copy
-git clone https://github.com/stevengonsalvez/agent-bridge.git
-cp -r agent-bridge/.claude-plugin ~/.claude/plugins/debug-bridge
-cp -r agent-bridge/skills ~/.claude/plugins/debug-bridge/
-```
-
 After installation, trigger the skill by saying:
 - "Debug the app"
 - "Inspect the UI"
 - "Take a screenshot of the page"
 - "Click the login button"
 - "Automate this workflow"
-
-#### Cursor
-
-```bash
-cp -r skills/debug-bridge ~/.cursor/skills/
-```
-
-#### Codex
-
-```bash
-cp -r skills/debug-bridge ~/.codex/skills/
-```
-
-#### VS Code / GitHub Copilot
-
-```bash
-cp -r skills/debug-bridge .github/skills/
-```
 
 ### Skill Documentation
 
