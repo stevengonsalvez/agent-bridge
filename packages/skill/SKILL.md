@@ -86,6 +86,7 @@ Design Mode enables users and agents to click elements, tweak styles live, inspe
 - **Auto-Show on Open**: Automatically mounts and activates on all browser sidecar navigations.
 - **Sleek Floating Pill Palette**: Minimal dark capsule (`bottom: 24px; left: 50%`) with mode toggles, chips, inline change description, and action controls.
 - **Pointer & Visual Annotation Tools**:
+  - `👆` Interact / Browse: Click input fields, type text, navigate links, and interact with the page normally without click interception. Press `Escape` to toggle between Interact and Select.
   - `↖` Pointer: Element inspection, highlighting, and multi-selection (`@e1`, `@e2`, ...).
   - `✏` Freehand Pen: Smooth polyline drawing directly on the page canvas.
   - `◰` Region Box: Dashed purple bounding box for region-level changes.
