@@ -31,10 +31,16 @@ export function registerBrowserCommands(program: Command): void {
           { type: 'browser_navigate', url },
           { port, session, timeoutMs: 3000 }
         );
+        try {
+          await sendBrowserCommand(
+            { type: 'browser_design_mode', action: 'enable' },
+            { port, session, timeoutMs: 3000 }
+          );
+        } catch {}
         if (opts.json) {
           console.log(JSON.stringify(res, null, 2));
         } else {
-          console.log(`Navigated to ${url}`);
+          console.log(`Navigated to ${url} (Design Mode active)`);
         }
         return;
       } catch {
@@ -73,11 +79,14 @@ export function registerBrowserCommands(program: Command): void {
       // Wait a moment and navigate
       await new Promise((resolve) => setTimeout(resolve, 500));
       const res = await sendBrowserCommand({ type: 'browser_navigate', url }, { port, session });
+      try {
+        await sendBrowserCommand({ type: 'browser_design_mode', action: 'enable' }, { port, session });
+      } catch {}
 
       if (opts.json) {
         console.log(JSON.stringify({ status: 'open', url, port, session, result: res }, null, 2));
       } else {
-        console.log(`Browser opened on port ${port} and navigated to: ${url}`);
+        console.log(`Browser opened on port ${port} and navigated to: ${url} (Design Mode active)`);
         console.log(`Keep running in background. Press Ctrl+C to close.`);
       }
 
@@ -206,6 +215,7 @@ export function registerBrowserCommands(program: Command): void {
     .command('design-mode [action]')
     .description('Control in-browser Design Mode (enable, disable, status, handoff, quick-render, copy-prompt, clear)')
     .option('-r, --request <text>', 'Requested change description for handoff or prompt', '')
+    .option('-t, --tool <tool>', 'Active tool (select, pen, rect, arrow, region)')
     .option('--css <string>', 'Optional custom CSS patch for quick-render')
     .option('-c, --copy', 'Copy prompt to clipboard', false)
     .option('-p, --port <number>', 'Bridge port', '4000')
@@ -221,7 +231,9 @@ export function registerBrowserCommands(program: Command): void {
         | 'quick_render'
         | 'copy_prompt'
         | 'clear_preview'
-        | 'clear_selections' = 'status';
+        | 'clear_selections'
+        | 'set_tool'
+        | 'clear_marks' = 'status';
 
       if (action === 'enable') act = 'enable';
       else if (action === 'disable') act = 'disable';
@@ -230,12 +242,15 @@ export function registerBrowserCommands(program: Command): void {
       else if (action === 'quick-render' || action === 'quick_render') act = 'quick_render';
       else if (action === 'copy-prompt' || action === 'copy_prompt' || opts.copy) act = 'copy_prompt';
       else if (action === 'clear' || action === 'clear-selections') act = 'clear_selections';
+      else if (action === 'clear-marks') act = 'clear_marks';
       else if (action === 'clear-preview') act = 'clear_preview';
+      else if (action === 'tool' || action === 'set-tool' || opts.tool) act = 'set_tool';
 
       const res = await sendBrowserCommand(
         {
           type: 'browser_design_mode',
           action: act,
+          tool: opts.tool,
           requestedChange: opts.request,
           cssPatch: opts.css,
         },
@@ -245,9 +260,23 @@ export function registerBrowserCommands(program: Command): void {
       if (opts.json) {
         console.log(JSON.stringify(res, null, 2));
       } else if (act === 'copy_prompt') {
-        const payload = res as { copied?: boolean; prompt?: string };
+        const payload = res as {
+          copied?: boolean;
+          prompt?: string;
+          artifacts?: {
+            screenshot_path?: string;
+            live_context_path?: string;
+            context_json_path?: string;
+          };
+        };
         console.log(payload.copied ? 'Prompt copied to clipboard:' : 'Generated prompt:');
         console.log(payload.prompt || JSON.stringify(res, null, 2));
+        if (payload.artifacts?.screenshot_path) {
+          console.log('\nArtifacts:');
+          console.log(`  Screenshot:   ${payload.artifacts.screenshot_path}`);
+          console.log(`  Live Context: ${payload.artifacts.live_context_path}`);
+          console.log(`  Context JSON: ${payload.artifacts.context_json_path}`);
+        }
       } else {
         console.log(`Design mode (${act}):`, JSON.stringify(res, null, 2));
       }
