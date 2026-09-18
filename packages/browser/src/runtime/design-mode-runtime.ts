@@ -79,7 +79,6 @@
   let activeTool: Tool = 'select';
   let showTweaker = false;
   let currentPromptText = '';
-  let captureHiddenMode: 'none' | 'palette' | 'all' = 'none';
 
   let overlayHost: HTMLDivElement | null = null;
   let shadowRoot: ShadowRoot | null = null;
@@ -288,7 +287,6 @@
   };
 
   const setCaptureHidden = (mode: 'none' | 'palette' | 'all') => {
-    captureHiddenMode = mode;
     if (!overlayHost || !shadowRoot) return;
     if (mode === 'all') {
       overlayHost.style.visibility = 'hidden';
