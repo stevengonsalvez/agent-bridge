@@ -35,13 +35,40 @@ export type DesignModeEdit = {
   value: string;
 };
 
+export type DesignModePoint = {
+  x: number;
+  y: number;
+};
+
+export type DesignModeMark = {
+  id: string;
+  type: 'rect' | 'region' | 'arrow' | 'pen' | 'highlight' | 'text';
+  color: string;
+  strokeWidth?: number;
+  opacity?: number;
+  bounds?: DesignModeRect;
+  points?: DesignModePoint[];
+  text?: string;
+  createdAt?: string;
+};
+
+export type DesignModeArtifacts = {
+  screenshot_path?: string;
+  live_context_path?: string;
+  context_json_path?: string;
+};
+
 export type DesignModeSnapshot = {
   revision: number;
   enabled: boolean;
+  active_tool?: 'select' | 'pen' | 'rect' | 'arrow' | 'region';
   selection: DesignModeSelection | null;
   selections: DesignModeSelection[];
+  marks: DesignModeMark[];
   edits: DesignModeEdit[];
   css_diff: string;
+  prompt_text?: string;
+  artifacts?: DesignModeArtifacts;
 };
 
 export type DesignModeHandoffPayload = {
@@ -51,7 +78,10 @@ export type DesignModeHandoffPayload = {
   revision: number;
   edits: DesignModeEdit[];
   selections: DesignModeSelection[];
+  marks?: DesignModeMark[];
   page_screenshot_path?: string;
+  live_context_path?: string;
+  context_json_path?: string;
   prompt: string;
 };
 
