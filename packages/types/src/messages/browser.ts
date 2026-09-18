@@ -152,7 +152,7 @@ export type BrowserDesignModeCommand = BrowserCommandBase & {
     | 'clear_selections'
     | 'set_tool'
     | 'clear_marks';
-  tool?: 'select' | 'pen' | 'rect' | 'arrow' | 'region';
+  tool?: 'interact' | 'select' | 'pen' | 'rect' | 'arrow' | 'region';
   requestedChange?: string;
   cssPatch?: string;
 };
