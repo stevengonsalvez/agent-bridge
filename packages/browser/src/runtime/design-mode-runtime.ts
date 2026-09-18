@@ -390,11 +390,18 @@
 
         /* Inline change description input */
         .prompt-field {
-          background: transparent; border: none; outline: none;
-          color: #fafafa; font-size: 12px; min-width: 140px; max-width: 240px;
-          padding: 4px 6px; font-family: inherit;
+          background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 9999px;
+          outline: none; color: #fafafa; font-size: 12px;
+          min-width: 200px; max-width: 600px; width: 320px;
+          padding: 5px 12px; font-family: inherit;
+          transition: width 0.2s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
         }
-        .prompt-field::placeholder { color: rgba(255, 255, 255, 0.35); }
+        .prompt-field:focus {
+          border-color: #3b82f6; background: rgba(255, 255, 255, 0.1);
+          box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+          width: 460px;
+        }
+        .prompt-field::placeholder { color: rgba(255, 255, 255, 0.38); }
 
         /* Action buttons */
         .btn-action {
@@ -774,11 +781,25 @@
       });
     });
 
+    // Stop keydown propagation from all inputs in shadow root
+    shadowRoot.querySelectorAll('input, textarea').forEach((el) => {
+      el.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+      });
+    });
+
     // Prompt input
     const promptInput = shadowRoot.querySelector<HTMLInputElement>('[data-agent-prompt]');
     if (promptInput) {
       promptInput.addEventListener('input', () => {
         currentPromptText = promptInput.value;
+      });
+      promptInput.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          quickRender();
+        }
       });
     }
 
@@ -978,16 +999,21 @@
   const handleKeyDown = (e: KeyboardEvent) => {
     if (!enabled) return;
 
-    // Do not intercept hotkeys if focused on input/textarea/editable
+    const shadowActive = shadowRoot?.activeElement as HTMLElement | null;
     const activeEl = document.activeElement as HTMLElement | null;
     const activeTagName = (activeEl?.tagName || '').toLowerCase();
-    const isEditing = activeTagName === 'input' || activeTagName === 'textarea' || !!activeEl?.isContentEditable || !!activeEl?.closest('.floating-palette') || !!activeEl?.closest('.tweaker-panel');
 
     if (e.key === 'Escape') {
       if (showTweaker) {
         showTweaker = false;
         renderOverlay();
         return;
+      }
+      if (shadowActive && (shadowActive.tagName === 'INPUT' || shadowActive.tagName === 'TEXTAREA')) {
+        shadowActive.blur();
+      }
+      if (activeEl && (activeTagName === 'input' || activeTagName === 'textarea')) {
+        activeEl.blur();
       }
       activeTool = activeTool === 'interact' ? 'select' : 'interact';
       if (activeTool !== 'select') {
@@ -998,7 +1024,14 @@
       return;
     }
 
-    if (!isEditing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    // Do not trigger letter shortcuts while focused on input/textarea/editable
+    if (shadowActive && (shadowActive.tagName === 'INPUT' || shadowActive.tagName === 'TEXTAREA' || shadowActive.isContentEditable)) {
+      return;
+    }
+    const isEditing = activeTagName === 'input' || activeTagName === 'textarea' || !!activeEl?.isContentEditable;
+    if (isEditing) return;
+
+    if (!e.metaKey && !e.ctrlKey && !e.altKey) {
       if (e.key === 'i' || e.key === 'I') {
         activeTool = 'interact';
         hoveredElement = null;

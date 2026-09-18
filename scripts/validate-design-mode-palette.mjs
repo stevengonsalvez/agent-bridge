@@ -126,6 +126,23 @@ async function runValidation() {
   assert.equal(modeSnap.active_tool, 'select', 'Escape key should toggle back to select tool');
   console.log('   ✓ Escape key toggles between interact and select mode');
 
+  // 3b. Test typing into floating palette prompt field (with letters like 's', 'i', 'v', and long strings)
+  console.log('3b. Testing typing long text into prompt field (with hotkey chars s, i, v)...');
+  await page.evaluate(() => {
+    const host = document.querySelector('[data-agent-bridge-design-overlay]');
+    const promptField = host?.shadowRoot?.querySelector('[data-agent-prompt]');
+    promptField?.focus();
+  });
+  const longPrompt = 'can you change the type scale and visual styles of the primary cta button';
+  await page.keyboard.type(longPrompt);
+  const promptVal = await page.evaluate(() => {
+    const host = document.querySelector('[data-agent-bridge-design-overlay]');
+    const promptField = host?.shadowRoot?.querySelector('[data-agent-prompt]');
+    return promptField?.value;
+  });
+  assert.equal(promptVal, longPrompt, 'Prompt field should hold full long text without truncation or hotkey interference');
+  console.log('   ✓ Full prompt text typed without hotkey interruption or character limit');
+
   // 4. Test annotation tools (pen, region, arrow)
   console.log('4. Testing annotation tools: pen, region, and arrow...');
   
