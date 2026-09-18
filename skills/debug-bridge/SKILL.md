@@ -76,7 +76,7 @@ debug-bridge browser preview-patch --css "button { background: #2563eb !importan
 
 ---
 
-### Mode 2: In-Browser Design Mode (cmux-style)
+### Mode 2: In-Browser Design Mode (Floating Palette)
 
 Design Mode enables users and agents to click elements, tweak styles live, inspect anchored XPaths, batch multiple element tweaks, draw annotations (pen, rect, region, arrow), quick render live preview patches, and copy paste-ready prompts for agents with generated screenshot artifacts.
 
@@ -84,7 +84,7 @@ Design Mode enables users and agents to click elements, tweak styles live, inspe
 
 #### Key Capabilities:
 - **Auto-Show on Open**: Automatically mounts and activates on all browser sidecar navigations.
-- **Sleek Floating Pill Palette**: Minimal dark capsule (`bottom: 24px; left: 50%`) matching cmux with mode toggles, chips, inline change description, and action controls.
+- **Sleek Floating Pill Palette**: Minimal dark capsule (`bottom: 24px; left: 50%`) with mode toggles, chips, inline change description, and action controls.
 - **Pointer & Visual Annotation Tools**:
   - `↖` Pointer: Element inspection, highlighting, and multi-selection (`@e1`, `@e2`, ...).
   - `✏` Freehand Pen: Smooth polyline drawing directly on the page canvas.
@@ -96,8 +96,8 @@ Design Mode enables users and agents to click elements, tweak styles live, inspe
 - **Inline Change Description**: `Describe the change` text input embedded right in the floating pill.
 - **⚡ Quick Render**: Injects live preview `<style id="__agent_bridge_live_preview__">` with `!important` rules directly into the page so visual adjustments appear instantaneously.
 - **Compact Property Tweakers Popover**: Accessible via `⚙ Tweak` button to modify padding, margin, font-size, color, background-color, border-radius, text content, and view unified CSS batch diff.
-- **📋 Copy for Agent (cmux-formatted Handoff)**:
-  - Generates 3 artifacts saved under `/tmp/cmux-browser-design-mode/process-<pid>-<session>/`:
+- **📋 Copy for Agent (Structured Handoff)**:
+  - Generates 3 artifacts saved under `/tmp/debug-bridge-design-mode/process-<pid>-<session>/`:
     1. Clean screenshot (`surface-...-screenshot.png`)
     2. Live-context screenshot with annotations (`surface-...-live-context-<session>.png`)
     3. Structured JSON details (`surface-...-context.json`)
