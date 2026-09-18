@@ -44,6 +44,7 @@ async function runValidation() {
           <h1>Modern Agentic Design Experience</h1>
           <p>Click elements, draw annotations, and quick render live CSS patches.</p>
           <button id="cta-btn" class="cta">Get Started</button>
+          <input id="search-input" type="text" placeholder="Type here..." style="margin-left: 12px; padding: 8px 12px; border-radius: 6px; border: 1px solid #cbd5e1;" />
           <div class="tags">
             <span class="tag">AI Agents</span>
             <span class="tag">Design Mode</span>
@@ -79,12 +80,16 @@ async function runValidation() {
     const promptInput = root?.querySelector('[data-agent-prompt]');
     const quickRenderBtn = root?.querySelector('[data-action="quick-render"]');
     const copyBtn = root?.querySelector('[data-action="copy-prompt"]');
+    const interactBtn = root?.querySelector('[data-tool="interact"]');
+    const divider = root?.querySelector('.mode-divider');
     return {
       hasHost: Boolean(host),
       hasPalette: Boolean(palette),
       hasPromptInput: Boolean(promptInput),
       hasQuickRender: Boolean(quickRenderBtn),
       hasCopyBtn: Boolean(copyBtn),
+      hasInteractBtn: Boolean(interactBtn),
+      hasDivider: Boolean(divider),
     };
   });
 
@@ -93,10 +98,36 @@ async function runValidation() {
   assert.equal(paletteVisible.hasPromptInput, true, 'Prompt input field must be present');
   assert.equal(paletteVisible.hasQuickRender, true, 'Quick Render button must be present');
   assert.equal(paletteVisible.hasCopyBtn, true, 'Copy prompt button must be present');
-  console.log('   ✓ Floating pill palette verified at bottom center');
+  assert.equal(paletteVisible.hasInteractBtn, true, 'Interact tool button must be present');
+  assert.equal(paletteVisible.hasDivider, true, 'Mode divider must be present');
+  console.log('   ✓ Floating pill palette verified with interact toggle');
 
-  // 3. Test annotation tools (pen, region, arrow)
-  console.log('3. Testing annotation tools: pen, region, and arrow...');
+  // 3. Test interact/browse mode vs select mode
+  console.log('3. Testing interact mode (typing in input, no click interception)...');
+  await page.evaluate(() => {
+    const host = document.querySelector('[data-agent-bridge-design-overlay]');
+    const interactBtn = host?.shadowRoot?.querySelector('[data-tool="interact"]');
+    interactBtn?.click();
+  });
+  let modeSnap = await page.evaluate(() => window.__agentBridgeDesignMode.getSnapshot());
+  assert.equal(modeSnap.active_tool, 'interact', 'Active tool should be interact');
+
+  // Click input, type text
+  await page.click('#search-input');
+  await page.type('#search-input', 'testing input interaction');
+  const inputVal = await page.$eval('#search-input', (el) => el.value);
+  assert.equal(inputVal, 'testing input interaction', 'User can type into input field in interact mode');
+  assert.equal(modeSnap.selections.length, 0, 'No element selection should be created in interact mode');
+  console.log('   ✓ Input typing and interaction works without click interception');
+
+  // Test Escape key shortcut to toggle back to select mode
+  await page.keyboard.press('Escape');
+  modeSnap = await page.evaluate(() => window.__agentBridgeDesignMode.getSnapshot());
+  assert.equal(modeSnap.active_tool, 'select', 'Escape key should toggle back to select tool');
+  console.log('   ✓ Escape key toggles between interact and select mode');
+
+  // 4. Test annotation tools (pen, region, arrow)
+  console.log('4. Testing annotation tools: pen, region, and arrow...');
   
   // 3a. Set tool to pen and draw freehand stroke
   await page.evaluate(() => window.__agentBridgeDesignMode.setTool('pen'));
