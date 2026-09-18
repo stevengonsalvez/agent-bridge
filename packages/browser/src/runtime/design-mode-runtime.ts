@@ -33,7 +33,7 @@
   const sensitiveAutocompletePattern = /(?:current-password|new-password|one-time-code|cc-number|cc-csc)/i;
   const redactedValue = '<redacted>';
 
-  type Tool = 'select' | 'pen' | 'rect' | 'arrow' | 'region';
+  type Tool = 'interact' | 'select' | 'pen' | 'rect' | 'arrow' | 'region';
 
   type StoredEdit = {
     id: string;
@@ -313,8 +313,8 @@
         /* Canvas for drawings */
         .design-canvas {
           position: fixed; inset: 0; width: 100vw; height: 100vh;
-          pointer-events: ${activeTool === 'select' ? 'none' : 'auto'};
-          cursor: ${activeTool === 'select' ? 'default' : 'crosshair'};
+          pointer-events: ${activeTool === 'select' || activeTool === 'interact' ? 'none' : 'auto'};
+          cursor: ${activeTool === 'interact' ? 'default' : activeTool === 'select' ? 'default' : 'crosshair'};
           z-index: 10;
         }
 
@@ -346,6 +346,9 @@
         .mode-group {
           display: flex; align-items: center; gap: 2px;
           padding: 2px; background: rgba(255, 255, 255, 0.08); border-radius: 9999px;
+        }
+        .mode-divider {
+          width: 1px; height: 16px; background: rgba(255, 255, 255, 0.18); margin: 0 3px;
         }
         .mode-btn {
           width: 28px; height: 28px; border-radius: 50%; border: none;
@@ -459,7 +462,7 @@
       <canvas class="design-canvas" data-canvas></canvas>
 
       <div class="box-layer">
-        ${hoveredElement && !selections.some((s) => s.element === hoveredElement) ? `
+        ${hoveredElement && activeTool === 'select' && !selections.some((s) => s.element === hoveredElement) ? `
           <div class="box hover-box" style="
             left: ${hoveredElement.getBoundingClientRect().left + window.scrollX}px;
             top: ${hoveredElement.getBoundingClientRect().top + window.scrollY}px;
@@ -536,6 +539,10 @@
 
       <div class="floating-palette">
         <div class="mode-group">
+          <button class="mode-btn ${activeTool === 'interact' ? 'active' : ''}" data-tool="interact" title="Interact / Browse (Escape to toggle) - Click inputs, type, navigate">
+            <svg viewBox="0 0 24 24"><path d="M9 11.24V7.5C9 6.12 10.12 5 11.5 5S14 6.12 14 7.5v3.74c1.21-.81 2-2.18 2-3.74C16 5.01 13.99 3 11.5 3S7 5.01 7 7.5c0 1.56.79 2.93 2 3.74zm9.84 4.63l-4.54-2.26c-.17-.07-.35-.11-.54-.11H13v-6c0-.83-.67-1.5-1.5-1.5S10 6.67 10 7.5v10.74l-3.43-.72c-.08-.01-.15-.02-.24-.02-.31 0-.59.13-.79.33l-.79.8 4.94 4.94c.27.27.65.43 1.06.43h6.79c.75 0 1.33-.55 1.44-1.28l.75-5.27c.01-.07.01-.14.01-.21 0-.61-.38-1.16-.95-1.34z"/></svg>
+          </button>
+          <div class="mode-divider"></div>
           <button class="mode-btn ${activeTool === 'select' ? 'active' : ''}" data-tool="select" title="Select Element (pointer)">
             <svg viewBox="0 0 24 24"><path d="M4 3l15 9-7 2-3 7L4 3z"/></svg>
           </button>
@@ -727,6 +734,9 @@
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         activeTool = btn.dataset.tool as Tool;
+        if (activeTool !== 'select') {
+          hoveredElement = null;
+        }
         revision += 1;
         renderOverlay();
       });
@@ -963,6 +973,43 @@
       activeElement = target;
     }
     renderOverlay();
+  };
+
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (!enabled) return;
+
+    // Do not intercept hotkeys if focused on input/textarea/editable
+    const activeEl = document.activeElement as HTMLElement | null;
+    const activeTagName = (activeEl?.tagName || '').toLowerCase();
+    const isEditing = activeTagName === 'input' || activeTagName === 'textarea' || !!activeEl?.isContentEditable || !!activeEl?.closest('.floating-palette') || !!activeEl?.closest('.tweaker-panel');
+
+    if (e.key === 'Escape') {
+      if (showTweaker) {
+        showTweaker = false;
+        renderOverlay();
+        return;
+      }
+      activeTool = activeTool === 'interact' ? 'select' : 'interact';
+      if (activeTool !== 'select') {
+        hoveredElement = null;
+      }
+      revision += 1;
+      renderOverlay();
+      return;
+    }
+
+    if (!isEditing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (e.key === 'i' || e.key === 'I') {
+        activeTool = 'interact';
+        hoveredElement = null;
+        revision += 1;
+        renderOverlay();
+      } else if (e.key === 'v' || e.key === 'V' || e.key === 's' || e.key === 'S') {
+        activeTool = 'select';
+        revision += 1;
+        renderOverlay();
+      }
+    }
   };
 
   const addSelection = (element: HTMLElement) => {
@@ -1210,6 +1257,7 @@
       createOverlay();
       document.addEventListener('mousemove', handlePointerMove, true);
       document.addEventListener('click', handleClick, true);
+      document.addEventListener('keydown', handleKeyDown, true);
       window.addEventListener('resize', () => {
         resizeCanvas();
         paintCanvas();
@@ -1220,6 +1268,7 @@
       enabled = false;
       document.removeEventListener('mousemove', handlePointerMove, true);
       document.removeEventListener('click', handleClick, true);
+      document.removeEventListener('keydown', handleKeyDown, true);
       removeOverlay();
       return getSnapshot();
     },
@@ -1231,6 +1280,9 @@
     quickRender,
     setTool: (tool: Tool) => {
       activeTool = tool;
+      if (activeTool !== 'select') {
+        hoveredElement = null;
+      }
       renderOverlay();
       return getSnapshot();
     },
