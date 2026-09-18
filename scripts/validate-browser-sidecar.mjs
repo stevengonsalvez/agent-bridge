@@ -5,7 +5,7 @@ import { WebSocket } from 'ws';
 
 const appPort = 8912;
 const bridgePort = 4789;
-const sessionId = 'cmux-test-' + Date.now();
+const sessionId = 'sidecar-test-' + Date.now();
 const children = new Set();
 
 function spawnManaged(name, command, args) {
@@ -187,7 +187,7 @@ async function main() {
   }
   console.log('PASS: browser element screenshot taken');
 
-  console.log('\nAll cmux-style browser sidecar tests passed cleanly!');
+  console.log('\nAll browser sidecar tests passed cleanly!');
 }
 
 main()
