@@ -61,7 +61,7 @@ export type DesignModeArtifacts = {
 export type DesignModeSnapshot = {
   revision: number;
   enabled: boolean;
-  active_tool?: 'select' | 'pen' | 'rect' | 'arrow' | 'region';
+  active_tool?: 'interact' | 'select' | 'pen' | 'rect' | 'arrow' | 'region';
   selection: DesignModeSelection | null;
   selections: DesignModeSelection[];
   marks: DesignModeMark[];
