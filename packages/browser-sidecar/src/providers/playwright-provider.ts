@@ -656,7 +656,7 @@ export class PlaywrightProvider {
     snapshot: Record<string, unknown>;
   }> {
     const sessionID = (this.options.sessionId || 'default').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 8);
-    const dir = path.join(os.tmpdir(), 'cmux-browser-design-mode', `process-${process.pid}-${sessionID}`);
+    const dir = path.join(os.tmpdir(), 'debug-bridge-design-mode', `process-${process.pid}-${sessionID}`);
     fs.mkdirSync(dir, { recursive: true });
 
     const timestamp = Date.now();
@@ -721,7 +721,7 @@ export class PlaywrightProvider {
       context_json_path: contextPath,
     });
 
-    // 6. Format prompt matching cmux
+    // 6. Format prompt for agent handoff
     const prompt = [
       change,
       '',
