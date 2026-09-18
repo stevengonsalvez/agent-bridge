@@ -58,7 +58,7 @@ debug-bridge browser screenshot --out ./screenshot.png --port 4000
 debug-bridge browser preview-patch --css "button { background: #2563eb !important; }" --port 4000
 ```
 
-### 4. In-Browser Design Mode (cmux-style)
+### 4. In-Browser Design Mode (Floating Palette)
 
 ```bash
 # Enable in-browser Design Mode
