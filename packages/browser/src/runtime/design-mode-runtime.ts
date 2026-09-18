@@ -1,9 +1,9 @@
 /**
  * Agent Bridge Injected Design Mode Runtime
- * Unified cmux-style floating pill palette and visual annotation engine.
+ * Unified floating pill palette and visual annotation engine.
  * Provides multi-selection, 14-color palette, anchored XPath, freehand pen,
  * rect, region, and arrow annotations, inline change prompt, quick render,
- * and cmux-compatible clipboard handoff.
+ * and structured artifact clipboard handoff.
  */
 
 (() => {
@@ -331,7 +331,7 @@
         }
         .badge button { background: none; border: none; color: #fff; cursor: pointer; padding: 0 2px; font-size: 12px; font-weight: bold; }
 
-        /* Floating pill palette at bottom center - cmux style */
+        /* Floating pill palette at bottom center */
         .floating-palette {
           position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
           display: flex; align-items: center; gap: 6px; padding: 5px 8px;
@@ -1048,7 +1048,7 @@
   const getFormattedPrompt = (requestedChange?: string): string => {
     const userPrompt = (requestedChange || currentPromptText).trim() || 'Design-mode context for the selected page elements.';
 
-    // If cmux artifact file paths are available, match cmux prompt formatting verbatim:
+    // If artifact file paths are available, format prompt for agent handoff:
     if (currentArtifacts.screenshot_path && currentArtifacts.live_context_path && currentArtifacts.context_json_path) {
       return [
         userPrompt,

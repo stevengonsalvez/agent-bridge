@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Automated Verification Script for cmux-Style Floating Pill Palette,
+ * Automated Verification Script for Floating Pill Palette,
  * Visual Annotation Tools, Live Quick Render, and Screenshot Artifact Generation.
  */
 import { chromium } from 'playwright';
@@ -10,7 +10,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 
 async function runValidation() {
-  console.log('=== cmux-Style Design Mode Palette & Artifact Generation Validation ===\n');
+  console.log('=== Design Mode Palette & Artifact Generation Validation ===\n');
 
   const runtimePath = path.resolve('packages/browser/dist/design-mode-runtime.global.js');
   if (!fs.existsSync(runtimePath)) {
@@ -29,7 +29,7 @@ async function runValidation() {
     <!DOCTYPE html>
     <html>
       <head>
-        <title>cmux Palette Test</title>
+        <title>Design Mode Palette Test</title>
         <style>
           body { font-family: sans-serif; margin: 0; padding: 40px; background: #ffffff; color: #1e293b; }
           .hero { background: #f1f5f9; padding: 32px; border-radius: 12px; margin-bottom: 24px; border: 1px solid #e2e8f0; }
@@ -170,9 +170,9 @@ async function runValidation() {
   assert.equal(btnBg, 'rgb(220, 38, 38)', 'Button background should reflect quick rendered patch');
   console.log('   ✓ Live CSS style patch injected and rendered');
 
-  // 6. Test artifact generation engine matching cmux
-  console.log('6. Testing artifact generation and cmux prompt formatting...');
-  const tmpDir = path.join(os.tmpdir(), 'cmux-browser-design-mode', `process-${process.pid}-test`);
+  // 6. Test artifact generation engine
+  console.log('6. Testing artifact generation and prompt formatting...');
+  const tmpDir = path.join(os.tmpdir(), 'debug-bridge-design-mode', `process-${process.pid}-test`);
   fs.mkdirSync(tmpDir, { recursive: true });
 
   const timestamp = Date.now();
@@ -233,7 +233,7 @@ async function runValidation() {
   assert.ok(promptText.includes(cleanScreenshotPath), 'Prompt should include clean screenshot path');
   assert.ok(promptText.includes(liveContextScreenshotPath), 'Prompt should include live context screenshot path');
   assert.ok(promptText.includes(`Details: ${contextJsonPath}`), 'Prompt should include Details: path');
-  console.log('   ✓ Prompt matches cmux format verbatim');
+  console.log('   ✓ Prompt matches format verbatim');
 
   // Cleanup test artifacts
   try {
@@ -241,7 +241,7 @@ async function runValidation() {
   } catch {}
 
   await browser.close();
-  console.log('\n=== All cmux Design Mode & Artifact Validations Passed Successfully! ===\n');
+  console.log('\n=== All Design Mode & Artifact Validations Passed Successfully! ===\n');
 }
 
 runValidation().catch((err) => {

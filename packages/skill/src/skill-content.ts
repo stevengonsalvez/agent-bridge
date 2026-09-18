@@ -80,7 +80,7 @@ debug-bridge browser preview-patch --css "button { background: #2563eb !importan
 
 ---
 
-### Mode 2: In-Browser Design Mode (cmux-style)
+### Mode 2: In-Browser Design Mode (Floating Palette)
 
 Design Mode enables users and agents to click elements, tweak styles live, inspect anchored XPaths, batch multiple element tweaks, quick render live preview patches, and copy paste-ready prompts for agents.
 

@@ -31,7 +31,7 @@ const html = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Agent Bridge: cmux Browser Sidecar Test Recording & Verification Report</title>
+  <title>Agent Bridge: Browser Sidecar Test Recording & Verification Report</title>
   <style>
     :root {
       --ivory:    #FAF9F5;
@@ -339,7 +339,7 @@ const html = `<!DOCTYPE html>
         <section id="summary">
           <h2>1. Executive Summary</h2>
           <div class="tldr-box">
-            <strong>Key Outcome:</strong> Validated the complete cmux-style browser sidecar architecture against <code>sample-react-app</code> with zero app modifications. All actions (interactive snapshot discovery, live CSS injection, design mode hover/palette, button clicks via <code>@e</code> handles, form filling, and session authentication) executed with sub-second latency and zero focus stealing.
+            <strong>Key Outcome:</strong> Validated the complete zero-install browser sidecar architecture against <code>sample-react-app</code> with zero app modifications. All actions (interactive snapshot discovery, live CSS injection, design mode hover/palette, button clicks via <code>@e</code> handles, form filling, and session authentication) executed with sub-second latency and zero focus stealing.
           </div>
           <div class="diagram-box">
 ┌─────────────────┐       ┌────────────────────┐       ┌────────────────────────┐
