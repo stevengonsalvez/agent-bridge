@@ -78,29 +78,54 @@ debug-bridge browser preview-patch --css "button { background: #2563eb !importan
 
 ### Mode 2: In-Browser Design Mode (cmux-style)
 
-Design Mode enables users and agents to click elements, tweak styles live, inspect anchored XPaths, batch multiple element tweaks, quick render live preview patches, and copy paste-ready prompts for agents.
+Design Mode enables users and agents to click elements, tweak styles live, inspect anchored XPaths, batch multiple element tweaks, draw annotations (pen, rect, region, arrow), quick render live preview patches, and copy paste-ready prompts for agents with generated screenshot artifacts.
+
+> **Auto-Show by Default**: Whenever a page is opened or navigated via `debug-bridge browser open`, the Design Mode floating feedback overlay automatically shows on page load without requiring manual activation.
 
 #### Key Capabilities:
-- **Multi-Element Batching**: Click multiple elements across the page. Each element is added to the selection batch (`@e1`, `@e2`, ...), assigned a color from a 14-color palette, and highlighted with badges and bounding boxes.
-- **Floating Composer Card**: Dark floating panel in Shadow DOM displays horizontal selection chips (`[@e1 <header>]`, `[@e2 <button>]`). Clicking a chip switches the active element.
-- **Property Tweakers**: Real-time inputs for padding, margin, font-size, color, background-color, border-radius, and text content.
-- **Batch CSS Diff**: Automatically computes unified CSS diff across all selected targets.
-- **⚡ Quick Render**: Injects live preview `<style id="__agent_bridge_live_preview__">` with `!important` rules directly into the page so user immediately sees rendered visual changes.
-- **📋 Copy for Agent**: Formats complete prompt with user instruction, page URL, each selected target (handle, tag, selector, full anchored XPath, original to new value edits), and CSS diff block, copying directly to system clipboard.
-- **🚀 Send to Agent**: Dispatches structured batch handoff event to the agent bridge host.
+- **Auto-Show on Open**: Automatically mounts and activates on all browser sidecar navigations.
+- **Sleek Floating Pill Palette**: Minimal dark capsule (`bottom: 24px; left: 50%`) matching cmux with mode toggles, chips, inline change description, and action controls.
+- **Pointer & Visual Annotation Tools**:
+  - `↖` Pointer: Element inspection, highlighting, and multi-selection (`@e1`, `@e2`, ...).
+  - `✏` Freehand Pen: Smooth polyline drawing directly on the page canvas.
+  - `◰` Region Box: Dashed purple bounding box for region-level changes.
+  - `↗` Directional Arrow: Point arrows directly at elements or areas to change.
+- **Dynamic Selection & Drawing Chips**:
+  - Element chips (`▢ <tag>`): Colored to match element border. Clicking opens style tweakers; `✕` removes selection.
+  - Region & Drawing chips (`◰ region`, `↗ arrow`, `✏ pen`): Colored badges with quick removal.
+- **Inline Change Description**: `Describe the change` text input embedded right in the floating pill.
+- **⚡ Quick Render**: Injects live preview `<style id="__agent_bridge_live_preview__">` with `!important` rules directly into the page so visual adjustments appear instantaneously.
+- **Compact Property Tweakers Popover**: Accessible via `⚙ Tweak` button to modify padding, margin, font-size, color, background-color, border-radius, text content, and view unified CSS batch diff.
+- **📋 Copy for Agent (cmux-formatted Handoff)**:
+  - Generates 3 artifacts saved under `/tmp/cmux-browser-design-mode/process-<pid>-<session>/`:
+    1. Clean screenshot (`surface-...-screenshot.png`)
+    2. Live-context screenshot with annotations (`surface-...-live-context-<session>.png`)
+    3. Structured JSON details (`surface-...-context.json`)
+  - Formats and copies paste-ready prompt to system clipboard:
+    ```
+    <Describe the change>
+
+    Page: <URL>
+    <path/to/surface-...-screenshot.png>
+    <path/to/surface-...-live-context.png>
+    Details: <path/to/surface-...-context.json>
+    ```
 
 #### CLI Commands:
 ```bash
-# Enable design mode in browser
-debug-bridge browser design-mode enable --port $PORT --session $SESSION
+# Open page (automatically shows Design Mode overlay)
+debug-bridge browser open "http://localhost:3000" --port $PORT --session $SESSION
 
 # Check status and current selections
 debug-bridge browser design-mode status --port $PORT --session $SESSION
 
+# Set active tool (select, pen, rect, arrow, region)
+debug-bridge browser design-mode tool pen --port $PORT --session $SESSION
+
 # Trigger Quick Render from CLI
 debug-bridge browser design-mode quick-render --port $PORT --session $SESSION
 
-# Copy formatted prompt to clipboard (or print to stdout)
+# Copy formatted prompt and generate screenshot artifacts
 debug-bridge browser design-mode copy-prompt -r "Make header dark navy and enlarge CTA" --port $PORT --session $SESSION
 
 # Retrieve structured handoff payload

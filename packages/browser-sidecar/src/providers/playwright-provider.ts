@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { chromium, type Browser, type BrowserContext, type CDPSession, type Page } from 'playwright';
 import type {
@@ -162,6 +163,7 @@ export class PlaywrightProvider {
       case 'browser_navigate': {
         const target = this.resolveTarget(command.targetId);
         await target.page.goto(command.url, { waitUntil: 'domcontentloaded' });
+        await this.autoEnableDesignMode(target.page);
         await this.refreshTarget(target, 'selected');
         return { target: target.ref };
       }
@@ -409,11 +411,12 @@ export class PlaywrightProvider {
           });
           return { snapshot: snap };
         } else if (command.action === 'get_handoff') {
+          const artifacts = await this.generateDesignModeArtifacts(target, command.requestedChange);
           const handoff = await target.page.evaluate((change) => {
             const api = (window as unknown as { __agentBridgeDesignMode?: { getHandoff?: (c?: string) => unknown } }).__agentBridgeDesignMode;
             return api?.getHandoff?.(change);
           }, command.requestedChange);
-          return { handoff };
+          return { handoff: { ...(handoff as Record<string, unknown>), prompt: artifacts.prompt } };
         } else if (command.action === 'quick_render') {
           await target.page.evaluate((css) => {
             const api = (window as unknown as { __agentBridgeDesignMode?: { quickRender?: (c?: string) => void } }).__agentBridgeDesignMode;
@@ -425,18 +428,28 @@ export class PlaywrightProvider {
           });
           return { rendered: true, snapshot: snap };
         } else if (command.action === 'copy_prompt') {
-          const result = await target.page.evaluate(async (change) => {
-            const api = (window as unknown as {
-              __agentBridgeDesignMode?: {
-                copyHandoffToClipboard?: (c?: string) => Promise<boolean>;
-                getFormattedPrompt?: (c?: string) => string;
-              };
-            }).__agentBridgeDesignMode;
-            const prompt = api?.getFormattedPrompt?.(change) || '';
-            const copied = await api?.copyHandoffToClipboard?.(change);
-            return { copied: Boolean(copied), prompt };
-          }, command.requestedChange);
-          return result;
+          const artifacts = await this.generateDesignModeArtifacts(target, command.requestedChange);
+          return {
+            copied: true,
+            prompt: artifacts.prompt,
+            artifacts: {
+              screenshot_path: artifacts.cleanPath,
+              live_context_path: artifacts.liveContextPath,
+              context_json_path: artifacts.contextPath,
+            },
+          };
+        } else if (command.action === 'set_tool') {
+          const snap = await target.page.evaluate((tool) => {
+            const api = (window as unknown as { __agentBridgeDesignMode?: { setTool?: (t: string) => unknown } }).__agentBridgeDesignMode;
+            return api?.setTool?.(tool);
+          }, command.tool || 'select');
+          return { tool: command.tool, snapshot: snap };
+        } else if (command.action === 'clear_marks') {
+          await target.page.evaluate(() => {
+            const api = (window as unknown as { __agentBridgeDesignMode?: { clearMarks?: () => void } }).__agentBridgeDesignMode;
+            api?.clearMarks?.();
+          });
+          return { cleared: true };
         } else if (command.action === 'clear_preview') {
           await target.page.evaluate(() => {
             const api = (window as unknown as { __agentBridgeDesignMode?: { clearLivePatch?: () => void } }).__agentBridgeDesignMode;
@@ -506,8 +519,13 @@ export class PlaywrightProvider {
       void this.refreshTarget(target, this.selectedTargetId === id ? 'selected' : 'updated');
     });
 
+    page.on('domcontentloaded', () => {
+      void this.autoEnableDesignMode(page);
+    });
+
     await this.enableNetwork(target);
     await this.refreshTarget(target, select ? 'selected' : 'created');
+    void this.autoEnableDesignMode(page);
   }
 
   private async enableNetwork(target: TargetState): Promise<void> {
@@ -604,6 +622,129 @@ export class PlaywrightProvider {
       state,
       target,
     });
+  }
+
+  private async autoEnableDesignMode(page: Page): Promise<void> {
+    try {
+      const script = this.getRuntimeScript();
+      if (script) {
+        await page.evaluate((src) => {
+          if (!(window as unknown as { __agentBridgeDesignMode?: unknown }).__agentBridgeDesignMode) {
+            const s = document.createElement('script');
+            s.textContent = src;
+            document.head.appendChild(s);
+          }
+        }, script);
+      }
+      await page.evaluate(() => {
+        const api = (window as unknown as { __agentBridgeDesignMode?: { enable?: () => unknown } }).__agentBridgeDesignMode;
+        api?.enable?.();
+      });
+    } catch {
+      // Ignore navigation or closed page
+    }
+  }
+
+  private async generateDesignModeArtifacts(
+    target: TargetState,
+    requestedChange?: string
+  ): Promise<{
+    cleanPath: string;
+    liveContextPath: string;
+    contextPath: string;
+    prompt: string;
+    snapshot: Record<string, unknown>;
+  }> {
+    const sessionID = (this.options.sessionId || 'default').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 8);
+    const dir = path.join(os.tmpdir(), 'cmux-browser-design-mode', `process-${process.pid}-${sessionID}`);
+    fs.mkdirSync(dir, { recursive: true });
+
+    const timestamp = Date.now();
+    const surfaceId = target.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'surface';
+    const uniqueId = Math.random().toString(16).slice(2, 10).toUpperCase();
+
+    // 1. Clean screenshot (overlay elements hidden)
+    await target.page.evaluate(() => {
+      const api = (window as unknown as { __agentBridgeDesignMode?: { setCaptureHidden?: (m: string) => void } }).__agentBridgeDesignMode;
+      api?.setCaptureHidden?.('all');
+    });
+    const cleanBuffer = await target.page.screenshot({ fullPage: false });
+    const cleanFilename = `surface-${surfaceId}-${timestamp}-${uniqueId}-screenshot.png`;
+    const cleanPath = path.join(dir, cleanFilename);
+    fs.writeFileSync(cleanPath, cleanBuffer);
+
+    // 2. Live-context screenshot (palette hidden, markings and highlights visible)
+    await target.page.evaluate(() => {
+      const api = (window as unknown as { __agentBridgeDesignMode?: { setCaptureHidden?: (m: string) => void } }).__agentBridgeDesignMode;
+      api?.setCaptureHidden?.('palette');
+    });
+    const liveContextBuffer = await target.page.screenshot({ fullPage: false });
+    const liveContextFilename = `surface-${surfaceId}-${timestamp}-${uniqueId}-live-context-${sessionID}.png`;
+    const liveContextPath = path.join(dir, liveContextFilename);
+    fs.writeFileSync(liveContextPath, liveContextBuffer);
+
+    // 3. Restore overlay visibility
+    await target.page.evaluate(() => {
+      const api = (window as unknown as { __agentBridgeDesignMode?: { setCaptureHidden?: (m: string) => void } }).__agentBridgeDesignMode;
+      api?.setCaptureHidden?.('none');
+    });
+
+    // 4. Retrieve snapshot and write context.json
+    const snapshot = ((await target.page.evaluate(() => {
+      const api = (window as unknown as { __agentBridgeDesignMode?: { getSnapshot?: () => unknown } }).__agentBridgeDesignMode;
+      return api?.getSnapshot?.();
+    })) as Record<string, unknown>) || {};
+
+    const change = (requestedChange || (snapshot?.prompt_text as string) || 'Design-mode context for the selected page elements.').trim();
+    const contextFilename = `surface-${surfaceId}-${timestamp}-${uniqueId}-context.json`;
+    const contextPath = path.join(dir, contextFilename);
+    const contextData = {
+      page_url: target.page.url(),
+      requested_change: change,
+      timestamp,
+      clean_screenshot_path: cleanPath,
+      live_context_screenshot_path: liveContextPath,
+      css_diff: snapshot?.css_diff || '',
+      edits: snapshot?.edits || [],
+      selections: snapshot?.selections || [],
+      marks: snapshot?.marks || [],
+    };
+    fs.writeFileSync(contextPath, JSON.stringify(contextData, null, 2));
+
+    // 5. Update browser runtime with artifact paths
+    await target.page.evaluate((paths) => {
+      const api = (window as unknown as { __agentBridgeDesignMode?: { setArtifactPaths?: (p: unknown) => void } }).__agentBridgeDesignMode;
+      api?.setArtifactPaths?.(paths);
+    }, {
+      screenshot_path: cleanPath,
+      live_context_path: liveContextPath,
+      context_json_path: contextPath,
+    });
+
+    // 6. Format prompt matching cmux
+    const prompt = [
+      change,
+      '',
+      `Page: ${target.page.url()}`,
+      cleanPath,
+      liveContextPath,
+      `Details: ${contextPath}`,
+    ].join('\n');
+
+    // 7. Write to clipboard in page context
+    await target.page.evaluate(async (text) => {
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {}
+    }, prompt);
+
+    return {
+      cleanPath,
+      liveContextPath,
+      contextPath,
+      prompt,
+      snapshot,
+    };
   }
 
   private requireContext(): BrowserContext {

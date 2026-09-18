@@ -149,7 +149,10 @@ export type BrowserDesignModeCommand = BrowserCommandBase & {
     | 'quick_render'
     | 'copy_prompt'
     | 'clear_preview'
-    | 'clear_selections';
+    | 'clear_selections'
+    | 'set_tool'
+    | 'clear_marks';
+  tool?: 'select' | 'pen' | 'rect' | 'arrow' | 'region';
   requestedChange?: string;
   cssPatch?: string;
 };

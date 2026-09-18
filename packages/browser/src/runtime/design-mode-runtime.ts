@@ -1,8 +1,9 @@
 /**
  * Agent Bridge Injected Design Mode Runtime
- * Ported and adapted from cmux BrowserDesignModeRuntime
- * Provides multi-selection, 14-color palette, anchored XPath,
- * floating live CSS/text property tweaker, and real-time css_diff.
+ * Unified cmux-style floating pill palette and visual annotation engine.
+ * Provides multi-selection, 14-color palette, anchored XPath, freehand pen,
+ * rect, region, and arrow annotations, inline change prompt, quick render,
+ * and cmux-compatible clipboard handoff.
  */
 
 (() => {
@@ -32,14 +33,7 @@
   const sensitiveAutocompletePattern = /(?:current-password|new-password|one-time-code|cc-number|cc-csc)/i;
   const redactedValue = '<redacted>';
 
-  let enabled = false;
-  let revision = 0;
-  let colorSequence = 0;
-  let overlayHost: HTMLDivElement | null = null;
-  let shadowRoot: ShadowRoot | null = null;
-  let hoveredElement: HTMLElement | null = null;
-  let activeElement: HTMLElement | null = null;
-  let currentPromptText = '';
+  type Tool = 'select' | 'pen' | 'rect' | 'arrow' | 'region';
 
   type StoredEdit = {
     id: string;
@@ -59,8 +53,48 @@
     originalStyles: Record<string, string>;
   };
 
+  type StoredPoint = {
+    x: number;
+    y: number;
+  };
+
+  type StoredMark = {
+    id: string;
+    type: 'rect' | 'region' | 'arrow' | 'pen';
+    color: string;
+    points?: StoredPoint[];
+    bounds?: { x: number; y: number; width: number; height: number };
+    createdAt: string;
+  };
+
+  type ArtifactPaths = {
+    screenshot_path?: string;
+    live_context_path?: string;
+    context_json_path?: string;
+  };
+
+  let enabled = false;
+  let revision = 0;
+  let colorSequence = 0;
+  let activeTool: Tool = 'select';
+  let showTweaker = false;
+  let currentPromptText = '';
+
+  let overlayHost: HTMLDivElement | null = null;
+  let shadowRoot: ShadowRoot | null = null;
+  let canvas: HTMLCanvasElement | null = null;
+  let hoveredElement: HTMLElement | null = null;
+  let activeElement: HTMLElement | null = null;
+
+  // Drawing state
+  let isDrawing = false;
+  let dragStart: StoredPoint | null = null;
+  let currentPoints: StoredPoint[] = [];
+
   const selections: StoredSelection[] = [];
+  const marks: StoredMark[] = [];
   const edits = new Map<string, StoredEdit>();
+  let currentArtifacts: ArtifactPaths = {};
 
   const cssEscape = (val: string): string => {
     if (globalThis.CSS && typeof globalThis.CSS.escape === 'function') {
@@ -122,75 +156,77 @@
     return parts.join(' > ');
   };
 
-  const xpathAnchorId = (node: Element): string | null => {
-    const id = (node as HTMLElement).id;
-    if (!id || id.length > 64) return null;
-    if (!/^[A-Za-z0-9._:-]+$/.test(id)) return null;
-    if (sensitiveNamePattern.test(id)) return null;
-    try {
-      if (document.querySelectorAll(`[id="${cssEscape(id)}"]`).length !== 1) return null;
-    } catch {
-      return null;
+  const selectorsFor = (element: HTMLElement): string[] => {
+    const results: string[] = [];
+    if (element.id && element.id.length <= 160) {
+      const idSel = `#${cssEscape(element.id)}`;
+      if (isUniqueFor(idSel, element)) results.push(idSel);
     }
-    return id;
+    for (const attr of preferredAttributes) {
+      const val = element.getAttribute(attr);
+      if (val && val.length <= 160) {
+        const sel = `[${attr}="${cssEscape(val)}"]`;
+        if (isUniqueFor(sel, element) && !results.includes(sel)) {
+          results.push(sel);
+        }
+      }
+    }
+    const struct = structuralSelector(element);
+    if (struct && !results.includes(struct)) results.push(struct);
+    if (!results.length) results.push(element.localName);
+    return results;
   };
 
-  const xpathFor = (element: Element): string => {
-    const parts: string[] = [];
+  const isSensitive = (element: HTMLElement): boolean => {
+    if (element instanceof HTMLInputElement) {
+      if (element.type === 'password') return true;
+      if (sensitiveAutocompletePattern.test(element.autocomplete || '')) return true;
+      if (sensitiveNamePattern.test(element.name || '') || sensitiveNamePattern.test(element.id || '')) return true;
+    }
+    return false;
+  };
+
+  const anchorPointFor = (element: Element): { element: Element; xpath: string } => {
     let current: Element | null = element;
-    while (current && current.nodeType === 1) {
-      const anchor = xpathAnchorId(current);
-      if (anchor) {
-        parts.unshift(`//*[@id="${anchor}"]`);
-        return parts.join('/');
+    while (current && current !== document.documentElement) {
+      if ((current as HTMLElement).id) {
+        return {
+          element: current,
+          xpath: `//*[@id="${(current as HTMLElement).id}"]`,
+        };
       }
+      for (const attr of preferredAttributes) {
+        const val = current.getAttribute(attr);
+        if (val) {
+          return {
+            element: current,
+            xpath: `//*[@${attr}="${val}"]`,
+          };
+        }
+      }
+      current = current.parentElement;
+    }
+    return { element: document.documentElement, xpath: '/html' };
+  };
+
+  const xpathFor = (element: HTMLElement): string => {
+    const anchor = anchorPointFor(element);
+    if (anchor.element === element) return anchor.xpath;
+
+    const segments: string[] = [];
+    let current: Element | null = element;
+    while (current && current !== anchor.element && current.nodeType === 1) {
       let index = 1;
       let sibling = current.previousElementSibling;
       while (sibling) {
         if (sibling.localName === current.localName) index += 1;
         sibling = sibling.previousElementSibling;
       }
-      parts.unshift(`${current.localName || '*'}[${index}]`);
+      const tag = current.localName.toLowerCase();
+      segments.unshift(index > 1 ? `${tag}[${index}]` : tag);
       current = current.parentElement;
     }
-    return `/${parts.join('/')}`;
-  };
-
-  const selectorsFor = (element: Element): string[] => {
-    const candidates: string[] = [];
-    const el = element as HTMLElement;
-    if (el.id && el.id.length <= 160 && !sensitiveNamePattern.test(el.id)) {
-      candidates.push(`#${cssEscape(el.id)}`);
-    }
-    for (const name of preferredAttributes) {
-      const val = element.getAttribute(name);
-      if (val && val.length <= 160) {
-        candidates.push(`${element.localName}[${name}="${val.replace(/"/g, '\\"')}"]`);
-        candidates.push(`[${name}="${val.replace(/"/g, '\\"')}"]`);
-      }
-    }
-    const cls = classSelector(element);
-    if (cls) candidates.push(cls);
-    candidates.push(structuralSelector(element));
-
-    const unique: string[] = [];
-    for (const cand of candidates) {
-      if (!cand || unique.includes(cand)) continue;
-      if (isUniqueFor(cand, element)) unique.push(cand);
-      if (unique.length === 6) break;
-    }
-    if (!unique.length) {
-      unique.push(structuralSelector(element));
-    }
-    return unique;
-  };
-
-  const isSensitive = (element: Element): boolean => {
-    if (element instanceof HTMLInputElement && ['password', 'hidden'].includes(element.type)) return true;
-    const name = element.getAttribute('name') || '';
-    const id = (element as HTMLElement).id || '';
-    const auto = element.getAttribute('autocomplete') || '';
-    return sensitiveNamePattern.test(name) || sensitiveNamePattern.test(id) || sensitiveAutocompletePattern.test(auto);
+    return `${anchor.xpath}/${segments.join('/')}`;
   };
 
   const captureStyles = (element: HTMLElement): Record<string, string> => {
@@ -247,227 +283,456 @@
     overlayHost?.remove();
     overlayHost = null;
     shadowRoot = null;
+    canvas = null;
+  };
+
+  const setCaptureHidden = (mode: 'none' | 'palette' | 'all') => {
+    if (!overlayHost || !shadowRoot) return;
+    if (mode === 'all') {
+      overlayHost.style.visibility = 'hidden';
+    } else {
+      overlayHost.style.visibility = 'visible';
+      const palette = shadowRoot.querySelector<HTMLElement>('.floating-palette');
+      const tweaker = shadowRoot.querySelector<HTMLElement>('.tweaker-popover');
+      if (palette) palette.style.display = mode === 'palette' ? 'none' : 'flex';
+      if (tweaker) tweaker.style.display = mode === 'palette' ? 'none' : (showTweaker ? 'flex' : 'none');
+    }
   };
 
   const renderOverlay = () => {
     if (!shadowRoot) return;
 
+    const diff = getComputedCssDiff();
+    const selIndex = activeElement ? selections.findIndex((s) => s.element === activeElement) : (selections.length ? selections.length - 1 : -1);
+    const activeSel = selIndex >= 0 ? selections[selIndex] : null;
+
     let html = `
       <style>
         :host { all: initial; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 12px; }
-        .box { position: absolute; box-sizing: border-box; pointer-events: none; transition: border-color 0.15s ease; }
+        
+        /* Canvas for drawings */
+        .design-canvas {
+          position: fixed; inset: 0; width: 100vw; height: 100vh;
+          pointer-events: ${activeTool === 'select' ? 'none' : 'auto'};
+          cursor: ${activeTool === 'select' ? 'default' : 'crosshair'};
+          z-index: 10;
+        }
+
+        /* Selection and hover boxes */
+        .box-layer { position: absolute; inset: 0; pointer-events: none; z-index: 20; }
+        .box { position: absolute; box-sizing: border-box; pointer-events: none; }
         .hover-box { border: 2px dashed #0A84FF; background: rgba(10, 132, 255, 0.08); }
-        .selected-box { border: 2.5px solid var(--box-color, #0A84FF); background: rgba(10, 132, 255, 0.04); }
+        .selected-box { border: 2.5px solid var(--box-color, #0A84FF); background: rgba(10, 132, 255, 0.05); }
         .badge {
-          position: absolute; top: -26px; left: -2px; height: 22px; padding: 0 8px;
-          border-radius: 5px; background: var(--box-color, #0A84FF); color: #fff;
-          font-weight: 600; display: inline-flex; align-items: center; gap: 6px;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.25); white-space: nowrap; pointer-events: auto;
+          position: absolute; top: -24px; left: -2px; height: 20px; padding: 0 6px;
+          border-radius: 4px; background: var(--box-color, #0A84FF); color: #fff;
+          font-weight: 600; font-size: 11px; display: inline-flex; align-items: center; gap: 4px;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.3); white-space: nowrap; pointer-events: auto;
         }
-        .badge button { background: none; border: none; color: #fff; cursor: pointer; padding: 0 2px; font-weight: bold; }
-        .panel {
-          position: fixed; right: 24px; bottom: 24px; width: 380px; max-height: 85vh;
-          background: #18181b; color: #f4f4f5; border: 1px solid #27272a; border-radius: 14px;
-          box-shadow: 0 16px 40px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.06);
-          display: flex; flex-direction: column; pointer-events: auto; overflow: hidden; z-index: 100;
+        .badge button { background: none; border: none; color: #fff; cursor: pointer; padding: 0 2px; font-size: 12px; font-weight: bold; }
+
+        /* Floating pill palette at bottom center - cmux style */
+        .floating-palette {
+          position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+          display: flex; align-items: center; gap: 6px; padding: 5px 8px;
+          background: rgba(22, 22, 26, 0.94); backdrop-filter: blur(20px);
+          border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 9999px;
+          box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06);
+          color: #f4f4f5; pointer-events: auto; z-index: 100;
+          max-width: 90vw; box-sizing: border-box;
         }
-        .panel-header {
-          padding: 10px 14px; background: #27272a; border-bottom: 1px solid #3f3f46;
-          display: flex; align-items: center; justify-content: space-between; font-weight: 600;
+
+        /* Mode toggle segment */
+        .mode-group {
+          display: flex; align-items: center; gap: 2px;
+          padding: 2px; background: rgba(255, 255, 255, 0.08); border-radius: 9999px;
         }
-        .panel-header-title { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #fafafa; }
-        .panel-header-badge { font-size: 10px; background: #3f3f46; color: #d4d4d8; padding: 2px 6px; border-radius: 10px; }
-        .chips-bar {
-          padding: 8px 12px; background: #202023; border-bottom: 1px solid #27272a;
-          display: flex; gap: 6px; overflow-x: auto; scrollbar-width: thin;
+        .mode-btn {
+          width: 28px; height: 28px; border-radius: 50%; border: none;
+          background: transparent; color: rgba(255, 255, 255, 0.55);
+          cursor: pointer; display: flex; align-items: center; justify-content: center;
+          transition: all 0.15s ease; padding: 0; outline: none;
         }
+        .mode-btn:hover { color: #fff; }
+        .mode-btn.active {
+          background: #2563eb; color: #ffffff;
+          box-shadow: 0 0 12px rgba(37, 99, 235, 0.6);
+        }
+        .mode-btn svg { width: 15px; height: 15px; fill: currentColor; }
+
+        /* Chips row */
+        .chips-container {
+          display: flex; align-items: center; gap: 5px;
+          max-width: 320px; overflow-x: auto; scrollbar-width: none;
+        }
+        .chips-container::-webkit-scrollbar { display: none; }
         .chip {
-          display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px;
-          border-radius: 6px; font-size: 11px; font-weight: 500;
-          background: #27272a; border: 1px solid #3f3f46; color: #e4e4e7;
-          cursor: pointer; user-select: none; white-space: nowrap; transition: all 0.15s ease;
+          display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px;
+          border-radius: 9999px; font-size: 11px; font-weight: 500;
+          background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12);
+          color: var(--chip-color, #93c5fd); cursor: pointer; user-select: none;
+          white-space: nowrap; transition: all 0.15s ease;
         }
         .chip.active {
+          background: rgba(255, 255, 255, 0.16);
           border-color: var(--chip-color, #3b82f6);
-          background: #323238;
-          box-shadow: 0 0 0 1px var(--chip-color, #3b82f6);
-          color: #fff;
+          box-shadow: 0 0 8px rgba(37, 99, 235, 0.3);
         }
-        .chip-dot {
-          width: 8px; height: 8px; border-radius: 50%; background: var(--chip-color, #3b82f6);
-        }
+        .chip-icon { font-size: 10px; opacity: 0.9; }
         .chip-remove {
-          background: none; border: none; color: #a1a1aa; cursor: pointer; padding: 0 2px;
-          font-size: 13px; line-height: 1; display: flex; align-items: center;
+          background: none; border: none; color: rgba(255, 255, 255, 0.4);
+          cursor: pointer; padding: 0 1px; font-size: 12px; line-height: 1;
         }
         .chip-remove:hover { color: #f87171; }
-        .panel-body { padding: 12px 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-        .target-info {
-          background: #27272a; border-radius: 6px; padding: 6px 10px; font-size: 11px;
-          display: flex; flex-direction: column; gap: 3px; font-family: ui-monospace, monospace;
+
+        /* Inline change description input */
+        .prompt-field {
+          background: transparent; border: none; outline: none;
+          color: #fafafa; font-size: 12px; min-width: 140px; max-width: 240px;
+          padding: 4px 6px; font-family: inherit;
+        }
+        .prompt-field::placeholder { color: rgba(255, 255, 255, 0.35); }
+
+        /* Action buttons */
+        .btn-action {
+          height: 28px; padding: 0 10px; border-radius: 9999px; font-size: 11px; font-weight: 600;
+          cursor: pointer; display: flex; align-items: center; gap: 5px; border: none;
+          outline: none; transition: all 0.15s ease; white-space: nowrap;
+        }
+        .btn-quick-render {
+          background: #2563eb; color: #fff;
+        }
+        .btn-quick-render:hover { background: #1d4ed8; }
+        .btn-tweak {
+          background: ${showTweaker ? '#3b82f6' : 'rgba(255, 255, 255, 0.08)'};
+          color: ${showTweaker ? '#fff' : 'rgba(255, 255, 255, 0.8)'};
+          padding: 0 8px;
+        }
+        .btn-tweak:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
+        .btn-icon {
+          width: 28px; height: 28px; padding: 0; border-radius: 50%;
+          background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.8);
+          border: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
+          outline: none; transition: all 0.15s ease;
+        }
+        .btn-icon:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
+        .btn-copy {
+          background: rgba(255, 255, 255, 0.1); color: #fff;
+        }
+        .btn-copy:hover { background: rgba(255, 255, 255, 0.2); }
+        .btn-copy svg { width: 14px; height: 14px; fill: currentColor; }
+
+        /* Tweaker popover card anchored above palette */
+        .tweaker-popover {
+          position: fixed; bottom: 74px; left: 50%; transform: translateX(-50%);
+          width: 380px; max-height: 480px; overflow-y: auto;
+          background: #18181b; color: #f4f4f5; border: 1px solid #27272a;
+          border-radius: 14px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+          display: flex; flex-direction: column; gap: 8px; padding: 12px 14px;
+          pointer-events: auto; z-index: 100;
+        }
+        .popover-header {
+          display: flex; align-items: center; justify-content: space-between;
+          border-bottom: 1px solid #27272a; padding-bottom: 6px;
+        }
+        .popover-title { font-size: 12px; font-weight: 700; color: #fafafa; }
+        .target-meta {
+          background: #27272a; border-radius: 6px; padding: 6px 8px; font-size: 10.5px;
+          font-family: ui-monospace, monospace; display: flex; flex-direction: column; gap: 3px;
         }
         .target-selector { color: #93c5fd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .target-xpath { color: #a1a1aa; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .row { display: grid; grid-template-columns: 100px 1fr; gap: 8px; align-items: center; }
-        .row label { font-size: 11px; color: #a1a1aa; text-transform: uppercase; font-weight: 600; }
+        .row { display: grid; grid-template-columns: 85px 1fr; gap: 8px; align-items: center; }
+        .row label { font-size: 10px; color: #a1a1aa; text-transform: uppercase; font-weight: 600; }
         .row input {
-          padding: 5px 8px; background: #27272a; border: 1px solid #3f3f46; border-radius: 6px;
-          font-size: 11.5px; color: #fafafa; font-family: ui-monospace, monospace; outline: none;
+          padding: 4px 7px; background: #27272a; border: 1px solid #3f3f46; border-radius: 5px;
+          font-size: 11px; color: #fafafa; font-family: ui-monospace, monospace; outline: none;
         }
         .row input:focus { border-color: #3b82f6; }
         .diff-preview {
-          background: #09090b; color: #a1a1aa; padding: 8px 10px; border-radius: 6px;
-          border: 1px solid #27272a; font-family: ui-monospace, monospace; font-size: 10.5px;
-          white-space: pre-wrap; max-height: 110px; overflow-y: auto;
+          background: #09090b; color: #a1a1aa; padding: 6px 8px; border-radius: 5px;
+          border: 1px solid #27272a; font-family: ui-monospace, monospace; font-size: 10px;
+          white-space: pre-wrap; max-height: 85px; overflow-y: auto;
         }
-        .prompt-input {
-          width: 100%; box-sizing: border-box; padding: 8px; background: #27272a; border: 1px solid #3f3f46;
-          border-radius: 6px; font-family: inherit; font-size: 12px; color: #fafafa;
-          resize: vertical; min-height: 55px; outline: none;
-        }
-        .prompt-input:focus { border-color: #3b82f6; }
-        .actions-row { display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 6px; margin-top: 2px; }
-        .btn-action {
-          padding: 8px 10px; border-radius: 7px; font-size: 11px; font-weight: 600;
-          cursor: pointer; display: flex; align-items: center; justify-content: center;
-          gap: 5px; border: none; transition: background 0.15s ease;
-        }
-        .btn-quick-render { background: #2563eb; color: #fff; }
-        .btn-quick-render:hover { background: #1d4ed8; }
-        .btn-copy { background: #3f3f46; color: #fafafa; border: 1px solid #52525b; }
-        .btn-copy:hover { background: #52525b; }
-        .btn-send { background: #ea580c; color: #fff; }
-        .btn-send:hover { background: #c2410c; }
-        .btn-clear { background: none; border: none; color: #a1a1aa; cursor: pointer; font-size: 11px; }
-        .btn-clear:hover { color: #f87171; }
       </style>
+
+      <canvas class="design-canvas" data-canvas></canvas>
+
+      <div class="box-layer">
+        ${hoveredElement && !selections.some((s) => s.element === hoveredElement) ? `
+          <div class="box hover-box" style="
+            left: ${hoveredElement.getBoundingClientRect().left + window.scrollX}px;
+            top: ${hoveredElement.getBoundingClientRect().top + window.scrollY}px;
+            width: ${hoveredElement.getBoundingClientRect().width}px;
+            height: ${hoveredElement.getBoundingClientRect().height}px;
+          "></div>
+        ` : ''}
+
+        ${selections.map((sel, idx) => {
+          const rect = sel.element.getBoundingClientRect();
+          return `
+            <div class="box selected-box" style="
+              --box-color: ${sel.color};
+              left: ${rect.left + window.scrollX}px;
+              top: ${rect.top + window.scrollY}px;
+              width: ${rect.width}px;
+              height: ${rect.height}px;
+            ">
+              <div class="badge">
+                <span>@e${idx + 1} &lt;${sel.element.localName}&gt;</span>
+                <button data-remove-selection="${idx}" title="Deselect">&times;</button>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+      ${showTweaker && activeSel ? `
+        <div class="tweaker-popover">
+          <div class="popover-header">
+            <div class="popover-title">Element Styles (@e${selIndex + 1})</div>
+            <button class="btn-icon" data-action="close-tweaker" style="width:20px;height:20px;">&times;</button>
+          </div>
+          <div class="target-meta">
+            <div class="target-selector" title="${activeSel.selector}"><strong>Selector:</strong> ${activeSel.selector}</div>
+            <div class="target-xpath" title="${activeSel.xpath}"><strong>XPath:</strong> ${activeSel.xpath}</div>
+          </div>
+          <div class="row">
+            <label>Padding</label>
+            <input type="text" data-edit-prop="padding" value="${activeSel.element.style.padding || activeSel.originalStyles.padding || ''}" placeholder="12px 16px" />
+          </div>
+          <div class="row">
+            <label>Margin</label>
+            <input type="text" data-edit-prop="margin" value="${activeSel.element.style.margin || activeSel.originalStyles.margin || ''}" placeholder="8px" />
+          </div>
+          <div class="row">
+            <label>Font Size</label>
+            <input type="text" data-edit-prop="font-size" value="${activeSel.element.style.fontSize || activeSel.originalStyles['font-size'] || ''}" placeholder="16px" />
+          </div>
+          <div class="row">
+            <label>Color</label>
+            <input type="text" data-edit-prop="color" value="${activeSel.element.style.color || activeSel.originalStyles.color || ''}" placeholder="#2563eb" />
+          </div>
+          <div class="row">
+            <label>Background</label>
+            <input type="text" data-edit-prop="background-color" value="${activeSel.element.style.backgroundColor || activeSel.originalStyles['background-color'] || ''}" placeholder="#f3f4f6" />
+          </div>
+          <div class="row">
+            <label>Radius</label>
+            <input type="text" data-edit-prop="border-radius" value="${activeSel.element.style.borderRadius || activeSel.originalStyles['border-radius'] || ''}" placeholder="8px" />
+          </div>
+          <div class="row">
+            <label>Text</label>
+            <input type="text" data-edit-text="true" value="${isSensitive(activeSel.element) ? redactedValue : (activeSel.element.textContent || '').trim().slice(0, 80)}" />
+          </div>
+          ${diff ? `
+            <div>
+              <div style="font-size:9.5px;color:#a1a1aa;text-transform:uppercase;font-weight:700;margin-bottom:3px;">CSS Batch Diff</div>
+              <div class="diff-preview">${diff}</div>
+            </div>
+          ` : ''}
+        </div>
+      ` : ''}
+
+      <div class="floating-palette">
+        <div class="mode-group">
+          <button class="mode-btn ${activeTool === 'select' ? 'active' : ''}" data-tool="select" title="Select Element (pointer)">
+            <svg viewBox="0 0 24 24"><path d="M4 3l15 9-7 2-3 7L4 3z"/></svg>
+          </button>
+          <button class="mode-btn ${activeTool === 'pen' ? 'active' : ''}" data-tool="pen" title="Freehand Pen">
+            <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+          </button>
+          <button class="mode-btn ${activeTool === 'region' ? 'active' : ''}" data-tool="region" title="Region Box">
+            <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/></svg>
+          </button>
+          <button class="mode-btn ${activeTool === 'arrow' ? 'active' : ''}" data-tool="arrow" title="Draw Arrow">
+            <svg viewBox="0 0 24 24"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg>
+          </button>
+        </div>
+
+        <div class="chips-container">
+          ${selections.map((s, idx) => `
+            <div class="chip ${s.element === activeElement ? 'active' : ''}" style="--chip-color: ${s.color};" data-select-chip="${idx}">
+              <span class="chip-icon">▢</span>
+              <span>&lt;${s.element.localName}&gt;</span>
+              <button class="chip-remove" data-remove-selection="${idx}" title="Remove">&times;</button>
+            </div>
+          `).join('')}
+
+          ${marks.map((m, idx) => `
+            <div class="chip" style="--chip-color: ${m.color};" data-mark-chip="${idx}">
+              <span class="chip-icon">${m.type === 'region' ? '◰' : m.type === 'arrow' ? '↗' : '✏'}</span>
+              <span>${m.type}</span>
+              <button class="chip-remove" data-remove-mark="${idx}" title="Remove">&times;</button>
+            </div>
+          `).join('')}
+        </div>
+
+        <input type="text" class="prompt-field" data-agent-prompt placeholder="Describe the change" value="${currentPromptText}" />
+
+        <button class="btn-action btn-quick-render" data-action="quick-render" title="Quick Render CSS Patch">
+          ⚡ Quick Render
+        </button>
+
+        ${selections.length > 0 ? `
+          <button class="btn-action btn-tweak" data-action="toggle-tweaker" title="Tweak Styles">
+            ⚙ Tweak
+          </button>
+        ` : ''}
+
+        <button class="btn-icon btn-copy" data-action="copy-prompt" title="Copy Prompt for Agent">
+          <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+        </button>
+
+        <button class="btn-icon" data-action="clear-all" title="Clear All Selections and Drawings">
+          &times;
+        </button>
+      </div>
     `;
 
-    // Hover box
-    if (hoveredElement && !selections.some((s) => s.element === hoveredElement)) {
-      const rect = hoveredElement.getBoundingClientRect();
-      html += `
-        <div class="box hover-box" style="
-          left: ${rect.left + window.scrollX}px;
-          top: ${rect.top + window.scrollY}px;
-          width: ${rect.width}px;
-          height: ${rect.height}px;
-        "></div>
-      `;
-    }
-
-    // Selected boxes
-    selections.forEach((sel, index) => {
-      const rect = sel.element.getBoundingClientRect();
-      html += `
-        <div class="box selected-box" style="
-          --box-color: ${sel.color};
-          left: ${rect.left + window.scrollX}px;
-          top: ${rect.top + window.scrollY}px;
-          width: ${rect.width}px;
-          height: ${rect.height}px;
-        ">
-          <div class="badge">
-            <span>@e${index + 1} &lt;${sel.element.localName}&gt;</span>
-            <button data-remove-selection="${index}" title="Deselect">&times;</button>
-          </div>
-        </div>
-      `;
-    });
-
-    // Floating Tweaker Panel if selections exist
-    if (selections.length > 0) {
-      if (!activeElement || !selections.some((s) => s.element === activeElement)) {
-        activeElement = selections[selections.length - 1].element;
-      }
-      const selIndex = selections.findIndex((s) => s.element === activeElement);
-      const sel = selIndex >= 0 ? selections[selIndex] : selections[0];
-      const currentIdx = selIndex >= 0 ? selIndex : 0;
-      const diff = getComputedCssDiff();
-
-      html += `
-        <div class="panel">
-          <div class="panel-header">
-            <div class="panel-header-title">
-              <span style="font-weight:700;">Design Mode</span>
-              <span class="panel-header-badge">${selections.length} selected</span>
-            </div>
-            <button class="btn-clear" data-action="clear-all" title="Clear all selections">Clear All</button>
-          </div>
-          
-          <div class="chips-bar">
-            ${selections.map((s, idx) => `
-              <div class="chip ${s.element === activeElement ? 'active' : ''}" style="--chip-color: ${s.color};" data-select-chip="${idx}">
-                <span class="chip-dot"></span>
-                <span>@e${idx + 1} &lt;${s.element.localName}&gt;</span>
-                <button class="chip-remove" data-remove-selection="${idx}" title="Remove">&times;</button>
-              </div>
-            `).join('')}
-          </div>
-
-          <div class="panel-body">
-            <div class="target-info">
-              <div class="target-selector" title="${sel.selector}"><strong>@e${currentIdx + 1} Selector:</strong> ${sel.selector}</div>
-              <div class="target-xpath" title="${sel.xpath}"><strong>XPath:</strong> ${sel.xpath}</div>
-            </div>
-
-            <div class="row">
-              <label>Padding</label>
-              <input type="text" data-edit-prop="padding" value="${sel.element.style.padding || sel.originalStyles.padding || ''}" placeholder="e.g. 12px 16px" />
-            </div>
-            <div class="row">
-              <label>Margin</label>
-              <input type="text" data-edit-prop="margin" value="${sel.element.style.margin || sel.originalStyles.margin || ''}" placeholder="e.g. 8px" />
-            </div>
-            <div class="row">
-              <label>Font Size</label>
-              <input type="text" data-edit-prop="font-size" value="${sel.element.style.fontSize || sel.originalStyles['font-size'] || ''}" placeholder="e.g. 16px" />
-            </div>
-            <div class="row">
-              <label>Color</label>
-              <input type="text" data-edit-prop="color" value="${sel.element.style.color || sel.originalStyles.color || ''}" placeholder="e.g. #2563eb" />
-            </div>
-            <div class="row">
-              <label>Background</label>
-              <input type="text" data-edit-prop="background-color" value="${sel.element.style.backgroundColor || sel.originalStyles['background-color'] || ''}" placeholder="e.g. #f3f4f6" />
-            </div>
-            <div class="row">
-              <label>Border Radius</label>
-              <input type="text" data-edit-prop="border-radius" value="${sel.element.style.borderRadius || sel.originalStyles['border-radius'] || ''}" placeholder="e.g. 8px" />
-            </div>
-            <div class="row">
-              <label>Text Content</label>
-              <input type="text" data-edit-text="true" value="${isSensitive(sel.element) ? redactedValue : (sel.element.textContent || '').trim().slice(0, 80)}" />
-            </div>
-
-            ${diff ? `
-              <div>
-                <label style="font-size:10px;font-weight:700;color:#a1a1aa;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:4px;">CSS Batch Diff</label>
-                <div class="diff-preview">${diff}</div>
-              </div>
-            ` : ''}
-
-            <div>
-              <textarea class="prompt-input" data-agent-prompt placeholder="Tell the agent what to fix across these elements...">${currentPromptText}</textarea>
-            </div>
-
-            <div class="actions-row">
-              <button class="btn-action btn-quick-render" data-action="quick-render" title="Instantly render preview into page style tag">⚡ Quick Render</button>
-              <button class="btn-action btn-copy" data-action="copy-for-agent" title="Copy prompt with selectors and xpaths for agent">📋 Copy</button>
-              <button class="btn-action btn-send" data-action="submit-to-agent" title="Send batch to agent bridge">🚀 Send to Agent</button>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
     shadowRoot.innerHTML = html;
+    canvas = shadowRoot.querySelector<HTMLCanvasElement>('[data-canvas]');
+    resizeCanvas();
+    paintCanvas();
     bindOverlayEvents();
+  };
+
+  const resizeCanvas = () => {
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = window.innerWidth * dpr;
+    canvas.height = window.innerHeight * dpr;
+  };
+
+  const paintCanvas = () => {
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+    // Draw saved marks
+    for (const mark of marks) {
+      drawMark(ctx, mark);
+    }
+
+    // Draw live preview shape while dragging
+    if (isDrawing && dragStart) {
+      if (activeTool === 'pen' && currentPoints.length > 1) {
+        drawPolyline(ctx, currentPoints, '#AF52DE', 3);
+      } else if (activeTool === 'region' && currentPoints.length > 0) {
+        const last = currentPoints[currentPoints.length - 1];
+        const bounds = getBoundsFromPoints(dragStart, last);
+        drawRegionBox(ctx, bounds, '#AF52DE');
+      } else if (activeTool === 'rect' && currentPoints.length > 0) {
+        const last = currentPoints[currentPoints.length - 1];
+        const bounds = getBoundsFromPoints(dragStart, last);
+        drawRectBox(ctx, bounds, '#0A84FF');
+      } else if (activeTool === 'arrow' && currentPoints.length > 0) {
+        const last = currentPoints[currentPoints.length - 1];
+        drawArrow(ctx, dragStart, last, '#0A84FF', 3);
+      }
+    }
+
+    ctx.restore();
+  };
+
+  const getBoundsFromPoints = (p1: StoredPoint, p2: StoredPoint) => ({
+    x: Math.min(p1.x, p2.x),
+    y: Math.min(p1.y, p2.y),
+    width: Math.abs(p2.x - p1.x),
+    height: Math.abs(p2.y - p1.y),
+  });
+
+  const drawMark = (ctx: CanvasRenderingContext2D, mark: StoredMark) => {
+    if (mark.type === 'pen' && mark.points && mark.points.length > 1) {
+      drawPolyline(ctx, mark.points, mark.color, 3);
+    } else if (mark.type === 'region' && mark.bounds) {
+      drawRegionBox(ctx, mark.bounds, mark.color);
+    } else if (mark.type === 'rect' && mark.bounds) {
+      drawRectBox(ctx, mark.bounds, mark.color);
+    } else if (mark.type === 'arrow' && mark.points && mark.points.length >= 2) {
+      drawArrow(ctx, mark.points[0], mark.points[mark.points.length - 1], mark.color, 3);
+    }
+  };
+
+  const drawPolyline = (ctx: CanvasRenderingContext2D, points: StoredPoint[], color: string, width: number) => {
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.stroke();
+  };
+
+  const drawRegionBox = (ctx: CanvasRenderingContext2D, bounds: { x: number; y: number; width: number; height: number }, color: string) => {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
+    ctx.fillStyle = 'rgba(175, 82, 222, 0.08)';
+    ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+    ctx.restore();
+  };
+
+  const drawRectBox = (ctx: CanvasRenderingContext2D, bounds: { x: number; y: number; width: number; height: number }, color: string) => {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
+    ctx.fillStyle = 'rgba(10, 132, 255, 0.06)';
+    ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+    ctx.restore();
+  };
+
+  const drawArrow = (ctx: CanvasRenderingContext2D, from: StoredPoint, to: StoredPoint, color: string, width: number) => {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+
+    const headlen = 14;
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const angle = Math.atan2(dy, dx);
+
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(to.x, to.y);
+    ctx.lineTo(to.x - headlen * Math.cos(angle - Math.PI / 6), to.y - headlen * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(to.x - headlen * Math.cos(angle + Math.PI / 6), to.y - headlen * Math.sin(angle + Math.PI / 6));
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   };
 
   const bindOverlayEvents = () => {
     if (!shadowRoot) return;
 
+    // Tool switching
+    shadowRoot.querySelectorAll<HTMLButtonElement>('[data-tool]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        activeTool = btn.dataset.tool as Tool;
+        revision += 1;
+        renderOverlay();
+      });
+    });
+
+    // Chips selection
     shadowRoot.querySelectorAll('[data-select-chip]').forEach((chip) => {
       chip.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
@@ -475,6 +740,7 @@
         const idx = Number((chip as HTMLElement).dataset.selectChip);
         if (selections[idx]) {
           activeElement = selections[idx].element;
+          showTweaker = true;
           renderOverlay();
         }
       });
@@ -488,66 +754,25 @@
       });
     });
 
-    shadowRoot.querySelector('[data-action="clear-all"]')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      while (selections.length) {
-        removeSelection(0);
-      }
-      clearLivePatch();
-    });
-
-    shadowRoot.querySelectorAll<HTMLInputElement>('[data-edit-prop]').forEach((input) => {
-      input.addEventListener('input', () => {
-        if (!activeElement) return;
-        const selIndex = selections.findIndex((s) => s.element === activeElement);
-        if (selIndex === -1) return;
-        const prop = input.dataset.editProp!;
-        const val = input.value;
-        const originalVal = selections[selIndex].originalStyles[prop] || '';
-
-        activeElement.style.setProperty(prop, val);
-        const editId = `${selIndex}::${prop}`;
-        edits.set(editId, {
-          id: editId,
-          kind: 'style',
-          property: prop,
-          original_value: originalVal,
-          value: val,
-        });
+    shadowRoot.querySelectorAll('[data-remove-mark]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = Number((btn as HTMLElement).dataset.removeMark);
+        marks.splice(idx, 1);
         revision += 1;
         renderOverlay();
       });
     });
 
-    const textInput = shadowRoot.querySelector<HTMLInputElement>('[data-edit-text]');
-    if (textInput) {
-      textInput.addEventListener('input', () => {
-        if (!activeElement || isSensitive(activeElement)) return;
-        const selIndex = selections.findIndex((s) => s.element === activeElement);
-        if (selIndex === -1) return;
-        const val = textInput.value;
-        const orig = selections[selIndex].originalText;
-        activeElement.textContent = val;
-        const editId = `${selIndex}::text-content`;
-        edits.set(editId, {
-          id: editId,
-          kind: 'text',
-          property: 'text-content',
-          original_value: orig,
-          value: val,
-        });
-        revision += 1;
-        renderOverlay();
+    // Prompt input
+    const promptInput = shadowRoot.querySelector<HTMLInputElement>('[data-agent-prompt]');
+    if (promptInput) {
+      promptInput.addEventListener('input', () => {
+        currentPromptText = promptInput.value;
       });
     }
 
-    const promptEl = shadowRoot.querySelector<HTMLTextAreaElement>('[data-agent-prompt]');
-    if (promptEl) {
-      promptEl.addEventListener('input', () => {
-        currentPromptText = promptEl.value;
-      });
-    }
-
+    // Quick render button
     const quickRenderBtn = shadowRoot.querySelector<HTMLButtonElement>('[data-action="quick-render"]');
     if (quickRenderBtn) {
       quickRenderBtn.addEventListener('click', () => {
@@ -562,43 +787,158 @@
       });
     }
 
-    const copyBtn = shadowRoot.querySelector<HTMLButtonElement>('[data-action="copy-for-agent"]');
+    // Tweaker toggle
+    const tweakerBtn = shadowRoot.querySelector<HTMLButtonElement>('[data-action="toggle-tweaker"]');
+    if (tweakerBtn) {
+      tweakerBtn.addEventListener('click', () => {
+        showTweaker = !showTweaker;
+        renderOverlay();
+      });
+    }
+
+    shadowRoot.querySelector('[data-action="close-tweaker"]')?.addEventListener('click', () => {
+      showTweaker = false;
+      renderOverlay();
+    });
+
+    // Copy prompt button
+    const copyBtn = shadowRoot.querySelector<HTMLButtonElement>('[data-action="copy-prompt"]');
     if (copyBtn) {
       copyBtn.addEventListener('click', async () => {
         const ok = await copyHandoffToClipboard(currentPromptText);
-        const orig = copyBtn.textContent;
-        copyBtn.textContent = ok ? '✓ Copied!' : 'Failed';
-        copyBtn.style.background = ok ? '#16a34a' : '#dc2626';
+        copyBtn.innerHTML = ok ? '✓' : '!';
+        copyBtn.style.color = ok ? '#4ade80' : '#f87171';
         setTimeout(() => {
-          copyBtn.textContent = orig;
-          copyBtn.style.background = '';
+          renderOverlay();
         }, 1800);
       });
     }
 
-    const submitBtn = shadowRoot.querySelector<HTMLButtonElement>('[data-action="submit-to-agent"]');
-    if (submitBtn) {
-      submitBtn.addEventListener('click', () => {
-        const promptText = currentPromptText.trim() || 'Please apply the selected visual tweaks.';
-        const payload = getHandoffPayload(promptText);
-        window.dispatchEvent(new CustomEvent('agent-bridge:handoff', { detail: payload }));
-        const host = (window as unknown as { __agentBridgeHost?: (msg: unknown) => void }).__agentBridgeHost;
-        if (typeof host === 'function') {
-          host({ type: 'design_mode_handoff', payload });
+    // Clear all
+    shadowRoot.querySelector('[data-action="clear-all"]')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      while (selections.length) removeSelection(0);
+      marks.length = 0;
+      clearLivePatch();
+      showTweaker = false;
+      revision += 1;
+      renderOverlay();
+    });
+
+    // Style editors in tweaker popover
+    shadowRoot.querySelectorAll<HTMLInputElement>('[data-edit-prop]').forEach((input) => {
+      input.addEventListener('input', () => {
+        if (!activeElement) return;
+        const selIdx = selections.findIndex((s) => s.element === activeElement);
+        if (selIdx === -1) return;
+        const prop = input.dataset.editProp!;
+        const val = input.value;
+        const orig = selections[selIdx].originalStyles[prop] || '';
+
+        activeElement.style.setProperty(prop, val);
+        const editId = `${selIdx}::${prop}`;
+        edits.set(editId, {
+          id: editId,
+          kind: 'style',
+          property: prop,
+          original_value: orig,
+          value: val,
+        });
+        revision += 1;
+        renderOverlay();
+      });
+    });
+
+    const textInput = shadowRoot.querySelector<HTMLInputElement>('[data-edit-text]');
+    if (textInput) {
+      textInput.addEventListener('input', () => {
+        if (!activeElement || isSensitive(activeElement)) return;
+        const selIdx = selections.findIndex((s) => s.element === activeElement);
+        if (selIdx === -1) return;
+        const val = textInput.value;
+        const orig = selections[selIdx].originalText;
+        activeElement.textContent = val;
+        const editId = `${selIdx}::text-content`;
+        edits.set(editId, {
+          id: editId,
+          kind: 'text',
+          property: 'text-content',
+          original_value: orig,
+          value: val,
+        });
+        revision += 1;
+        renderOverlay();
+      });
+    }
+
+    // Canvas drawing interactions
+    if (canvas && activeTool !== 'select') {
+      canvas.addEventListener('pointerdown', (e: PointerEvent) => {
+        isDrawing = true;
+        dragStart = { x: e.clientX, y: e.clientY };
+        currentPoints = [dragStart];
+        canvas?.setPointerCapture(e.pointerId);
+      });
+
+      canvas.addEventListener('pointermove', (e: PointerEvent) => {
+        if (!isDrawing || !dragStart) return;
+        currentPoints.push({ x: e.clientX, y: e.clientY });
+        paintCanvas();
+      });
+
+      canvas.addEventListener('pointerup', (e: PointerEvent) => {
+        if (!isDrawing || !dragStart) return;
+        isDrawing = false;
+        const end = { x: e.clientX, y: e.clientY };
+        currentPoints.push(end);
+
+        const color = selectionPalette[colorSequence % selectionPalette.length];
+        colorSequence += 1;
+
+        if (activeTool === 'pen') {
+          marks.push({
+            id: `mark_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`,
+            type: 'pen',
+            color,
+            points: currentPoints,
+            createdAt: new Date().toISOString(),
+          });
+        } else if (activeTool === 'region') {
+          marks.push({
+            id: `mark_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`,
+            type: 'region',
+            color: '#AF52DE',
+            bounds: getBoundsFromPoints(dragStart, end),
+            createdAt: new Date().toISOString(),
+          });
+        } else if (activeTool === 'rect') {
+          marks.push({
+            id: `mark_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`,
+            type: 'rect',
+            color,
+            bounds: getBoundsFromPoints(dragStart, end),
+            createdAt: new Date().toISOString(),
+          });
+        } else if (activeTool === 'arrow') {
+          marks.push({
+            id: `mark_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`,
+            type: 'arrow',
+            color,
+            points: [dragStart, end],
+            createdAt: new Date().toISOString(),
+          });
         }
-        const orig = submitBtn.textContent;
-        submitBtn.textContent = '✓ Sent!';
-        submitBtn.style.background = '#16a34a';
-        setTimeout(() => {
-          submitBtn.textContent = orig;
-          submitBtn.style.background = '';
-        }, 1800);
+
+        dragStart = null;
+        currentPoints = [];
+        revision += 1;
+        renderOverlay();
       });
     }
   };
 
   const handlePointerMove = (e: MouseEvent) => {
-    if (!enabled) return;
+    if (!enabled || activeTool !== 'select') return;
     const target = e.target as HTMLElement | null;
     if (!target || overlayHost?.contains(target)) return;
     if (hoveredElement !== target) {
@@ -608,7 +948,7 @@
   };
 
   const handleClick = (e: MouseEvent) => {
-    if (!enabled) return;
+    if (!enabled || activeTool !== 'select') return;
     const target = e.target as HTMLElement | null;
     if (!target || overlayHost?.contains(target)) return;
 
@@ -645,7 +985,6 @@
   const removeSelection = (index: number) => {
     const sel = selections[index];
     if (!sel) return;
-    // Revert edits made on this element
     for (const [key, edit] of Array.from(edits.entries())) {
       if (key.startsWith(`${index}::`)) {
         if (edit.kind === 'style') {
@@ -668,10 +1007,14 @@
     return {
       revision,
       enabled,
+      active_tool: activeTool,
       selection: selections.length ? buildSelectionSnapshot(selections[selections.length - 1]) : null,
       selections: selections.map((s) => buildSelectionSnapshot(s)),
+      marks: marks.map((m) => ({ ...m })),
       edits: Array.from(edits.values()),
       css_diff: getComputedCssDiff(),
+      prompt_text: currentPromptText,
+      artifacts: currentArtifacts,
     };
   };
 
@@ -703,33 +1046,59 @@
   };
 
   const getFormattedPrompt = (requestedChange?: string): string => {
-    const userPrompt = (requestedChange || currentPromptText).trim() || 'Please apply the design mode fixes.';
+    const userPrompt = (requestedChange || currentPromptText).trim() || 'Design-mode context for the selected page elements.';
+
+    // If cmux artifact file paths are available, match cmux prompt formatting verbatim:
+    if (currentArtifacts.screenshot_path && currentArtifacts.live_context_path && currentArtifacts.context_json_path) {
+      return [
+        userPrompt,
+        '',
+        `Page: ${window.location.href}`,
+        currentArtifacts.screenshot_path,
+        currentArtifacts.live_context_path,
+        `Details: ${currentArtifacts.context_json_path}`,
+      ].join('\n');
+    }
+
+    // Fallback if artifacts are not yet written:
     const lines: string[] = [
       userPrompt,
       '',
       `Page: ${window.location.href}`,
-      '',
-      `Selected Elements (${selections.length}):`,
     ];
 
-    selections.forEach((sel, idx) => {
-      lines.push(`- Target @e${idx + 1} <${sel.element.localName}>:`);
-      lines.push(`  Selector: ${sel.selector}`);
-      if (sel.xpath) {
-        lines.push(`  XPath: ${sel.xpath}`);
-      }
-      const selEdits = Array.from(edits.values()).filter((e) => e.id.startsWith(`${idx}::`));
-      if (selEdits.length > 0) {
-        lines.push('  Edits:');
-        for (const edit of selEdits) {
-          if (edit.kind === 'style') {
-            lines.push(`    - ${edit.property}: "${edit.original_value || 'initial'}" -> "${edit.value}"`);
-          } else if (edit.kind === 'text') {
-            lines.push(`    - text-content: "${edit.original_value}" -> "${edit.value}"`);
+    if (selections.length > 0) {
+      lines.push('', `Selected Elements (${selections.length}):`);
+      selections.forEach((sel, idx) => {
+        lines.push(`- Target @e${idx + 1} <${sel.element.localName}>:`);
+        lines.push(`  Selector: ${sel.selector}`);
+        if (sel.xpath) lines.push(`  XPath: ${sel.xpath}`);
+        const selEdits = Array.from(edits.values()).filter((e) => e.id.startsWith(`${idx}::`));
+        if (selEdits.length > 0) {
+          lines.push('  Edits:');
+          for (const edit of selEdits) {
+            if (edit.kind === 'style') {
+              lines.push(`    - ${edit.property}: "${edit.original_value || 'initial'}" -> "${edit.value}"`);
+            } else if (edit.kind === 'text') {
+              lines.push(`    - text-content: "${edit.original_value}" -> "${edit.value}"`);
+            }
           }
         }
-      }
-    });
+      });
+    }
+
+    if (marks.length > 0) {
+      lines.push('', `Annotations (${marks.length}):`);
+      marks.forEach((m, idx) => {
+        if (m.type === 'region' && m.bounds) {
+          lines.push(`- Mark #${idx + 1} [region]: x=${Math.round(m.bounds.x)}, y=${Math.round(m.bounds.y)}, ${Math.round(m.bounds.width)}x${Math.round(m.bounds.height)}`);
+        } else if (m.type === 'arrow' && m.points) {
+          lines.push(`- Mark #${idx + 1} [arrow]: (${m.points[0]?.x}, ${m.points[0]?.y}) -> (${m.points[1]?.x}, ${m.points[1]?.y})`);
+        } else {
+          lines.push(`- Mark #${idx + 1} [${m.type}]: ${m.points?.length ?? 0} points`);
+        }
+      });
+    }
 
     const diff = getComputedCssDiff();
     if (diff) {
@@ -739,22 +1108,36 @@
     return lines.join('\n');
   };
 
-  const getHandoffPayload = (requestedChange = 'Please apply the design mode fixes.') => {
+  const getHandoffPayload = (requestedChange = 'Design-mode context for the selected page elements.') => {
     const snap = getSnapshot();
     const prompt = getFormattedPrompt(requestedChange);
     return {
       page_url: window.location.href,
-      requested_change: (requestedChange || currentPromptText).trim() || 'Please apply the design mode fixes.',
+      requested_change: (requestedChange || currentPromptText).trim() || 'Design-mode context for the selected page elements.',
       css_diff: snap.css_diff,
       revision: snap.revision,
       edits: snap.edits,
       selections: snap.selections,
+      marks: snap.marks,
+      page_screenshot_path: currentArtifacts.screenshot_path,
+      live_context_path: currentArtifacts.live_context_path,
+      context_json_path: currentArtifacts.context_json_path,
       prompt,
     };
   };
 
   const copyHandoffToClipboard = async (requestedChange?: string): Promise<boolean> => {
-    const text = getFormattedPrompt(requestedChange);
+    const promptText = (requestedChange || currentPromptText).trim() || 'Design-mode context for the selected page elements.';
+    const payload = getHandoffPayload(promptText);
+
+    // Notify host or agent bridge
+    window.dispatchEvent(new CustomEvent('agent-bridge:handoff', { detail: payload }));
+    const host = (window as unknown as { __agentBridgeHost?: (msg: unknown) => void }).__agentBridgeHost;
+    if (typeof host === 'function') {
+      host({ type: 'design_mode_handoff', payload });
+    }
+
+    const text = getFormattedPrompt(promptText);
     let ok = false;
     try {
       if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
@@ -784,7 +1167,6 @@
     return ok;
   };
 
-  // Live CSS Preview Injection API (<style id="__agent_bridge_live_preview__">)
   const applyLivePatch = (css: string) => {
     let styleEl = document.getElementById('__agent_bridge_live_preview__') as HTMLStyleElement | null;
     if (!styleEl) {
@@ -828,6 +1210,10 @@
       createOverlay();
       document.addEventListener('mousemove', handlePointerMove, true);
       document.addEventListener('click', handleClick, true);
+      window.addEventListener('resize', () => {
+        resizeCanvas();
+        paintCanvas();
+      });
       return getSnapshot();
     },
     disable: () => {
@@ -843,11 +1229,25 @@
     getFormattedPrompt,
     copyHandoffToClipboard,
     quickRender,
+    setTool: (tool: Tool) => {
+      activeTool = tool;
+      renderOverlay();
+      return getSnapshot();
+    },
+    setCaptureHidden,
+    setArtifactPaths: (paths: ArtifactPaths) => {
+      currentArtifacts = { ...currentArtifacts, ...paths };
+      return getSnapshot();
+    },
     clearSelections: () => {
-      while (selections.length) {
-        removeSelection(0);
-      }
+      while (selections.length) removeSelection(0);
       clearLivePatch();
+      renderOverlay();
+    },
+    clearMarks: () => {
+      marks.length = 0;
+      paintCanvas();
+      renderOverlay();
     },
     removeSelection,
     selectElement: (element: HTMLElement) => {

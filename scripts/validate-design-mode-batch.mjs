@@ -98,37 +98,37 @@ async function runValidation() {
   assert.equal(sel1.tag_name, 'header');
   assert.equal(sel2.tag_name, 'button');
 
-  // 4. Verify Shadow DOM Floating Composer Card & Chips
-  console.log('4. Verifying Floating Composer Card and Selection Chips in Shadow DOM...');
+  // 4. Verify Shadow DOM Floating Pill Palette & Chips
+  console.log('4. Verifying Floating Pill Palette and Selection Chips in Shadow DOM...');
   const overlayInfo = await page.evaluate(() => {
     const host = document.querySelector('[data-agent-bridge-design-overlay]');
     if (!host || !host.shadowRoot) return null;
     const chips = Array.from(host.shadowRoot.querySelectorAll('.chip')).map((c) => c.textContent.trim());
-    const panel = host.shadowRoot.querySelector('.panel');
+    const palette = host.shadowRoot.querySelector('.floating-palette');
     const hasQuickRender = Boolean(host.shadowRoot.querySelector('[data-action="quick-render"]'));
-    const hasCopy = Boolean(host.shadowRoot.querySelector('[data-action="copy-for-agent"]'));
-    const hasSend = Boolean(host.shadowRoot.querySelector('[data-action="submit-to-agent"]'));
+    const hasCopy = Boolean(host.shadowRoot.querySelector('[data-action="copy-prompt"]')) || Boolean(host.shadowRoot.querySelector('[data-action="copy-for-agent"]'));
     return {
-      hasPanel: Boolean(panel),
+      hasPalette: Boolean(palette),
       chips,
       hasQuickRender,
       hasCopy,
-      hasSend,
     };
   });
 
-  assert.ok(overlayInfo?.hasPanel, 'Floating composer card panel should be visible');
+  assert.ok(overlayInfo?.hasPalette, 'Floating pill palette should be visible');
   assert.equal(overlayInfo.chips.length, 2, 'Chips bar should show 2 selection chips');
-  assert.ok(overlayInfo.hasQuickRender, 'Panel should have Quick Render button');
-  assert.ok(overlayInfo.hasCopy, 'Panel should have Copy for Agent button');
-  assert.ok(overlayInfo.hasSend, 'Panel should have Send to Agent button');
-  console.log('   ✓ Floating composer card rendered with chips:', overlayInfo.chips);
+  assert.ok(overlayInfo.hasQuickRender, 'Palette should have Quick Render button');
+  assert.ok(overlayInfo.hasCopy, 'Palette should have Copy button');
+  console.log('   ✓ Floating pill palette rendered with chips:', overlayInfo.chips);
 
   // 5. Apply Tweaks Across Both Elements
   console.log('5. Applying style tweaks across elements...');
   await page.evaluate(() => {
     const host = document.querySelector('[data-agent-bridge-design-overlay]');
     const root = host.shadowRoot;
+
+    // Open tweaker popover
+    root.querySelector('[data-action="toggle-tweaker"]')?.click();
 
     // Active element is currently @e2 (button#cta)
     const paddingInput = root.querySelector('[data-edit-prop="padding"]');
