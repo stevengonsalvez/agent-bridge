@@ -51,10 +51,11 @@ program
   .option('--profile <nameOrPath>', 'Persistent browser profile name or absolute path', 'agent-bridge-default')
   .option('--storage-state <path>', 'Optional Playwright storageState file to import/export')
   .option('--feedback-dir <path>', 'Directory for UI feedback artifacts', '.debug-bridge/feedback')
-  .option('--no-feedback-artifacts', 'Route feedback events without writing local artifacts')
-  .option('--headed', 'Run managed browser with a visible window', false)
-  .option('--headless', 'Run managed browser headlessly', true)
+  .option('--headed', 'Run managed browser with a visible window', true)
+  .option('--headless', 'Run managed browser headlessly', false)
+  .option('--channel <string>', 'Browser distribution channel (e.g. chrome, msedge, chromium)')
   .action(async (options) => {
+    const isHeadless = options.headless || !options.headed;
     const config: CliConfig = {
       port: parseInt(options.port, 10),
       host: options.host,
@@ -65,7 +66,8 @@ program
       cdpEndpoint: options.cdpEndpoint,
       profile: options.profile,
       storageState: options.storageState,
-      headless: options.headed ? false : true,
+      headless: isHeadless,
+      channel: options.channel,
       feedbackDir: options.feedbackDir,
       feedbackArtifacts: options.feedbackArtifacts,
     };
@@ -104,7 +106,8 @@ program
         mode: config.browser === 'connect' ? 'connect' : 'managed',
         cdpEndpoint: config.cdpEndpoint,
         storageState: config.storageState,
-        headless: config.headless ?? true,
+        headless: config.headless ?? false,
+        channel: config.channel,
       });
       await sidecar.start();
       formatter.info(`CDP sidecar started with profile ${config.profile ?? 'agent-bridge-default'}`);

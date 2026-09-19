@@ -22,6 +22,7 @@ export type PlaywrightProviderOptions = {
   cdpEndpoint?: string;
   storageState?: string;
   headless: boolean;
+  channel?: string;
   send: SendMessage;
 };
 
@@ -72,11 +73,26 @@ export class PlaywrightProvider {
     } else {
       const profileDir = new ProfileStore().resolve(this.options.profile);
       const recordDir = process.env.DEBUG_BRIDGE_RECORD_VIDEO_DIR;
-      this.context = await chromium.launchPersistentContext(profileDir, {
+      const channel = resolveBrowserChannel(this.options.channel);
+      const launchOptions = {
+        channel,
         headless: this.options.headless,
         viewport: { width: 1280, height: 720 },
         ...(recordDir ? { recordVideo: { dir: recordDir, size: { width: 1280, height: 720 } } } : {}),
-      });
+      };
+      try {
+        this.context = await chromium.launchPersistentContext(profileDir, launchOptions);
+      } catch (err) {
+        if (channel) {
+          // Retry without channel if Chrome channel failed
+          this.context = await chromium.launchPersistentContext(profileDir, {
+            ...launchOptions,
+            channel: undefined,
+          });
+        } else {
+          throw err;
+        }
+      }
     }
 
     this.context.on('page', (page) => {
@@ -473,11 +489,7 @@ export class PlaywrightProvider {
       }
       case 'cdp_send': {
         const target = this.resolveTarget(command.targetId);
-        const sendCdp = target.cdp.send as unknown as (
-          method: string,
-          params?: Record<string, unknown>
-        ) => Promise<unknown>;
-        return await sendCdp(command.method, command.params ?? {});
+        return await (target.cdp.send as any)(command.method, command.params ?? {});
       }
     }
   }
@@ -767,4 +779,20 @@ function redactHeaders(headers: Record<string, string | number | boolean>): Reco
     safe[key] = String(value);
   }
   return safe;
+}
+
+function resolveBrowserChannel(requestedChannel?: string): string | undefined {
+  if (requestedChannel) return requestedChannel;
+  if (process.env.DEBUG_BRIDGE_BROWSER_CHANNEL) {
+    return process.env.DEBUG_BRIDGE_BROWSER_CHANNEL;
+  }
+  if (process.platform === 'darwin' && fs.existsSync('/Applications/Google Chrome.app')) {
+    return 'chrome';
+  }
+  try {
+    chromium.executablePath({ channel: 'chrome' });
+    return 'chrome';
+  } catch {
+    return undefined;
+  }
 }

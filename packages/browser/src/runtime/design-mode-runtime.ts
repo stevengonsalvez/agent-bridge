@@ -78,6 +78,7 @@
   let colorSequence = 0;
   let activeTool: Tool = 'select';
   let showTweaker = false;
+  let showBatch = false;
   let currentPromptText = '';
 
   let overlayHost: HTMLDivElement | null = null;
@@ -95,6 +96,15 @@
   const marks: StoredMark[] = [];
   const edits = new Map<string, StoredEdit>();
   let currentArtifacts: ArtifactPaths = {};
+
+  const escapeHtml = (str: string): string => {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  };
 
   const cssEscape = (val: string): string => {
     if (globalThis.CSS && typeof globalThis.CSS.escape === 'function') {
@@ -266,6 +276,8 @@
   };
 
   const createOverlay = () => {
+    // Remove any legacy feedback overlay elements from DOM
+    document.querySelectorAll('[data-debug-bridge-feedback-overlay]').forEach((el) => el.remove());
     if (overlayHost) return;
     overlayHost = document.createElement('div');
     overlayHost.setAttribute('data-agent-bridge-design-overlay', 'true');
@@ -294,8 +306,10 @@
       overlayHost.style.visibility = 'visible';
       const palette = shadowRoot.querySelector<HTMLElement>('.floating-palette');
       const tweaker = shadowRoot.querySelector<HTMLElement>('.tweaker-popover');
+      const batch = shadowRoot.querySelector<HTMLElement>('.batch-popover');
       if (palette) palette.style.display = mode === 'palette' ? 'none' : 'flex';
       if (tweaker) tweaker.style.display = mode === 'palette' ? 'none' : (showTweaker ? 'flex' : 'none');
+      if (batch) batch.style.display = mode === 'palette' ? 'none' : (showBatch ? 'flex' : 'none');
     }
   };
 
@@ -464,6 +478,50 @@
           border: 1px solid #27272a; font-family: ui-monospace, monospace; font-size: 10px;
           white-space: pre-wrap; max-height: 85px; overflow-y: auto;
         }
+
+        /* Batch button and popover */
+        .btn-batch {
+          background: ${showBatch ? '#2563eb' : 'rgba(255, 255, 255, 0.08)'};
+          color: ${showBatch ? '#fff' : 'rgba(255, 255, 255, 0.9)'};
+          padding: 0 10px;
+          border: 1px solid ${showBatch ? '#3b82f6' : 'rgba(255, 255, 255, 0.12)'};
+          display: flex; align-items: center; gap: 4px;
+        }
+        .btn-batch:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
+        .batch-count-badge {
+          background: ${showBatch ? '#1d4ed8' : '#2563eb'}; color: #fff; border-radius: 9999px;
+          padding: 1px 6px; font-size: 10px; font-weight: 700;
+        }
+
+        .batch-popover {
+          position: fixed; bottom: 74px; left: 50%; transform: translateX(-50%);
+          width: 420px; max-height: 480px; overflow-y: auto;
+          background: #18181b; color: #f4f4f5; border: 1px solid #27272a;
+          border-radius: 14px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+          display: flex; flex-direction: column; gap: 10px; padding: 14px 16px;
+          pointer-events: auto; z-index: 100;
+        }
+        .batch-section { display: flex; flex-direction: column; gap: 4px; }
+        .batch-label { font-size: 10px; color: #a1a1aa; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; }
+        .batch-text { background: #27272a; border-radius: 6px; padding: 7px 10px; font-size: 11.5px; color: #f4f4f5; }
+        .batch-item {
+          display: flex; align-items: center; justify-content: space-between;
+          background: #27272a; border-radius: 6px; padding: 6px 10px; font-size: 11px;
+        }
+        .batch-item-left { display: flex; align-items: center; gap: 6px; }
+        .batch-item-tag { font-weight: 600; color: #93c5fd; }
+        .batch-item-detail { font-size: 10px; color: #a1a1aa; font-family: ui-monospace, monospace; }
+        .batch-empty { color: #71717a; font-style: italic; font-size: 11px; padding: 4px 0; }
+        .batch-footer {
+          display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+          border-top: 1px solid #27272a; padding-top: 10px; margin-top: 2px;
+        }
+        .btn-submit-batch {
+          background: #2563eb; color: #fff; height: 30px; padding: 0 14px;
+          border-radius: 9999px; font-weight: 600; font-size: 11.5px; border: none; cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .btn-submit-batch:hover { background: #1d4ed8; }
       </style>
 
       <canvas class="design-canvas" data-canvas></canvas>
@@ -544,6 +602,72 @@
         </div>
       ` : ''}
 
+      ${showBatch ? `
+        <div class="batch-popover">
+          <div class="popover-header">
+            <div class="popover-title">Batch Review (${selections.length + marks.length} item${selections.length + marks.length === 1 ? '' : 's'})</div>
+            <button class="btn-icon" data-action="close-batch" style="width:20px;height:20px;">&times;</button>
+          </div>
+
+          <div class="batch-section">
+            <div class="batch-label">Change Description</div>
+            <div class="batch-text">
+              ${currentPromptText ? escapeHtml(currentPromptText) : '<span class="batch-empty">No prompt description entered.</span>'}
+            </div>
+          </div>
+
+          <div class="batch-section">
+            <div class="batch-label">Selected Elements (${selections.length})</div>
+            ${selections.length === 0 ? '<div class="batch-empty">No elements selected.</div>' : `
+              <div style="display:flex;flex-direction:column;gap:5px;">
+                ${selections.map((s, idx) => `
+                  <div class="batch-item">
+                    <div class="batch-item-left">
+                      <span class="chip-icon" style="color:${s.color};">▢</span>
+                      <span class="batch-item-tag">@e${idx + 1} &lt;${s.element.localName}&gt;</span>
+                    </div>
+                    <span class="batch-item-detail" title="${s.selector}">${s.selector}</span>
+                  </div>
+                `).join('')}
+              </div>
+            `}
+          </div>
+
+          <div class="batch-section">
+            <div class="batch-label">Visual Annotations (${marks.length})</div>
+            ${marks.length === 0 ? '<div class="batch-empty">No visual annotations drawn.</div>' : `
+              <div style="display:flex;flex-direction:column;gap:5px;">
+                ${marks.map((m, idx) => `
+                  <div class="batch-item">
+                    <div class="batch-item-left">
+                      <span style="color:${m.color};">${m.type === 'region' ? '◰' : m.type === 'arrow' ? '↗' : '✏'}</span>
+                      <span style="font-weight:600;text-transform:capitalize;">${m.type}</span>
+                    </div>
+                    <span class="batch-item-detail">${m.type === 'pen' ? `${m.points?.length ?? 0} points` : `${Math.round(m.bounds?.width ?? 0)}x${Math.round(m.bounds?.height ?? 0)}px`}</span>
+                  </div>
+                `).join('')}
+              </div>
+            `}
+          </div>
+
+          ${diff ? `
+            <div class="batch-section">
+              <div class="batch-label">Proposed CSS Diff</div>
+              <div class="diff-preview">${diff}</div>
+            </div>
+          ` : ''}
+
+          <div class="batch-footer">
+            <button class="btn-action" data-action="clear-all" style="background:rgba(255,255,255,0.08);color:#a1a1aa;padding:0 12px;height:28px;">
+              Clear
+            </button>
+            <button class="btn-submit-batch" data-action="submit-batch" title="Submit Batch to Agent">
+              Submit Batch to Agent
+            </button>
+          </div>
+        </div>
+      ` : ''}
+
       <div class="floating-palette">
         <div class="mode-group">
           <button class="mode-btn ${activeTool === 'interact' ? 'active' : ''}" data-tool="interact" title="Interact / Browse (Escape to toggle) - Click inputs, type, navigate">
@@ -593,6 +717,10 @@
             ⚙ Tweak
           </button>
         ` : ''}
+
+        <button class="btn-action btn-batch" data-action="toggle-batch" title="View Current Batch">
+          📋 Batch <span class="batch-count-badge">${selections.length + marks.length}</span>
+        </button>
 
         <button class="btn-icon btn-copy" data-action="copy-prompt" title="Copy Prompt for Agent">
           <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
@@ -823,6 +951,7 @@
     if (tweakerBtn) {
       tweakerBtn.addEventListener('click', () => {
         showTweaker = !showTweaker;
+        if (showTweaker) showBatch = false;
         renderOverlay();
       });
     }
@@ -831,6 +960,51 @@
       showTweaker = false;
       renderOverlay();
     });
+
+    // Batch toggle
+    const batchBtn = shadowRoot.querySelector<HTMLButtonElement>('[data-action="toggle-batch"]');
+    if (batchBtn) {
+      batchBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showBatch = !showBatch;
+        if (showBatch) showTweaker = false;
+        renderOverlay();
+      });
+    }
+
+    shadowRoot.querySelector('[data-action="close-batch"]')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showBatch = false;
+      renderOverlay();
+    });
+
+    // Submit batch
+    const submitBatchBtn = shadowRoot.querySelector<HTMLButtonElement>('[data-action="submit-batch"]');
+    if (submitBatchBtn) {
+      submitBatchBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        submitBatchBtn.disabled = true;
+        submitBatchBtn.textContent = 'Submitting...';
+
+        // 1. Submit through SDK if present
+        const sdk = (globalThis as unknown as { __debugBridge?: { feedback?: { submitBatch?: () => Promise<void> } } }).__debugBridge?.feedback;
+        if (sdk?.submitBatch) {
+          try {
+            await sdk.submitBatch();
+          } catch {}
+        }
+
+        // 2. Generate and copy handoff prompt
+        await copyHandoffToClipboard(currentPromptText);
+
+        submitBatchBtn.textContent = '✓ Submitted to Agent!';
+        submitBatchBtn.style.background = '#16a34a';
+        setTimeout(() => {
+          showBatch = false;
+          renderOverlay();
+        }, 1200);
+      });
+    }
 
     // Copy prompt button
     const copyBtn = shadowRoot.querySelector<HTMLButtonElement>('[data-action="copy-prompt"]');
@@ -852,6 +1026,7 @@
       marks.length = 0;
       clearLivePatch();
       showTweaker = false;
+      showBatch = false;
       revision += 1;
       renderOverlay();
     });
