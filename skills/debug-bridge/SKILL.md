@@ -48,7 +48,9 @@ Debug Bridge provides autonomous browser control, visual feedback annotations, a
 
 ### Mode 1: Zero-Instrumentation Browser Sidecar (Recommended Default)
 
-No changes needed in target webapp. Playwright manages Chromium, attaches via CDP, and exposes interactive element handles (`@e1`, `@e2`, ...), live CSS injection, and full console/network observation.
+No changes needed in target webapp. Playwright automatically detects and launches system Google Chrome (or Chromium fallback) with a visible desktop window, attaches via CDP, and exposes interactive element handles (`@e1`, `@e2`, ...), live CSS injection, and full console/network observation.
+
+> **Chrome Auto-Launch**: Automatically detects and opens system Google Chrome (`/Applications/Google Chrome.app` on macOS, or standard paths on Windows/Linux) in headed mode by default. Override via `--channel <name>` or `--headless`.
 
 #### Quick Start:
 ```bash

@@ -215,6 +215,37 @@ async function runValidation() {
   assert.ok(handoff.prompt, 'Handoff must contain prompt string');
   console.log('   ✓ Handoff payload verified');
 
+  // 8b. Test Unified Batch Popover in Shadow DOM
+  console.log('8b. Testing Unified Batch Popover in Shadow DOM...');
+  const batchState = await page.evaluate(async () => {
+    const host = document.querySelector('[data-agent-bridge-design-overlay]');
+    const root = host?.shadowRoot;
+    if (!root) throw new Error('Shadow root not found');
+
+    const batchBtn = root.querySelector('[data-action="toggle-batch"]');
+    if (!batchBtn) throw new Error('Batch button not found in floating palette');
+    batchBtn.click();
+
+    const popover = root.querySelector('.batch-popover');
+    if (!popover) throw new Error('Batch popover did not open');
+
+    const title = popover.querySelector('.popover-title')?.textContent?.trim() || '';
+    const items = Array.from(popover.querySelectorAll('.batch-item-tag')).map((el) => el.textContent?.trim());
+    const submitBtn = popover.querySelector('[data-action="submit-batch"]');
+
+    submitBtn?.click();
+    await new Promise((r) => setTimeout(r, 100));
+
+    return { title, items, submitClicked: Boolean(submitBtn) };
+  });
+
+  assert.ok(batchState.title.includes('Batch Review'), 'Batch popover should render title');
+  assert.equal(batchState.items.length, 2, 'Batch popover should list both selected elements');
+  assert.equal(batchState.submitClicked, true, 'Submit button should be clickable');
+  console.log('   ✓ Batch popover renders title:', batchState.title);
+  console.log('   ✓ Batch popover items:', batchState.items);
+  console.log('   ✓ Submit batch to agent executed successfully');
+
   // 9. Test Clear Previews & Selections
   console.log('9. Testing clear preview and selections...');
   await page.evaluate(() => window.__agentBridgeDesignMode.clearSelections());
