@@ -488,6 +488,11 @@
           display: flex; align-items: center; gap: 4px;
         }
         .btn-batch:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
+        .btn-send-agent {
+          background: #2563eb; color: #fff; font-weight: 600;
+          padding: 0 12px; display: flex; align-items: center; gap: 4px;
+        }
+        .btn-send-agent:hover { background: #1d4ed8; }
         .batch-count-badge {
           background: ${showBatch ? '#1d4ed8' : '#2563eb'}; color: #fff; border-radius: 9999px;
           padding: 1px 6px; font-size: 10px; font-weight: 700;
@@ -708,6 +713,10 @@
 
         <input type="text" class="prompt-field" data-agent-prompt placeholder="Describe the change" value="${currentPromptText}" />
 
+        <button class="btn-action btn-send-agent" data-action="submit-batch" title="Send to Agent (Enter)">
+          ➤ Send
+        </button>
+
         <button class="btn-action btn-quick-render" data-action="quick-render" title="Quick Render CSS Patch">
           ⚡ Quick Render
         </button>
@@ -916,6 +925,57 @@
       });
     });
 
+    // Submit action handler (used by Enter key and Send/Submit buttons)
+    const executeSubmit = async () => {
+      const allSubmitBtns = shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="submit-batch"]');
+      allSubmitBtns.forEach((btn) => {
+        btn.disabled = true;
+        btn.textContent = 'Submitting...';
+      });
+
+      // 1. Submit through SDK if present (syncs to bridge WebSocket & feedback store)
+      const sdk = (globalThis as unknown as {
+        __debugBridge?: {
+          feedback?: {
+            addItem?: (draft: any) => any;
+            submitBatch?: () => Promise<void>;
+          };
+        };
+      }).__debugBridge?.feedback;
+
+      if (sdk) {
+        try {
+          if (sdk.addItem) {
+            sdk.addItem({
+              comment: currentPromptText || 'UI Change Request',
+              target: selections[0] ? {
+                selector: selections[0].selector,
+                xpath: selections[0].xpath,
+                tagName: selections[0].element.localName,
+                textContent: selections[0].element.textContent?.slice(0, 200),
+              } : undefined,
+            });
+          }
+          if (sdk.submitBatch) {
+            await sdk.submitBatch();
+          }
+        } catch {}
+      }
+
+      // 2. Generate screenshot artifacts and copy prompt to clipboard
+      await copyHandoffToClipboard(currentPromptText);
+
+      allSubmitBtns.forEach((btn) => {
+        btn.textContent = '✓ Sent to Agent!';
+        btn.style.background = '#16a34a';
+      });
+
+      setTimeout(() => {
+        showBatch = false;
+        renderOverlay();
+      }, 1400);
+    };
+
     // Prompt input
     const promptInput = shadowRoot.querySelector<HTMLInputElement>('[data-agent-prompt]');
     if (promptInput) {
@@ -926,7 +986,7 @@
         e.stopPropagation();
         if (e.key === 'Enter') {
           e.preventDefault();
-          quickRender();
+          executeSubmit();
         }
       });
     }
@@ -935,6 +995,18 @@
     const quickRenderBtn = shadowRoot.querySelector<HTMLButtonElement>('[data-action="quick-render"]');
     if (quickRenderBtn) {
       quickRenderBtn.addEventListener('click', () => {
+        const hasEdits = edits.size > 0;
+        if (!hasEdits) {
+          const orig = quickRenderBtn.textContent;
+          quickRenderBtn.textContent = 'No CSS tweaks';
+          quickRenderBtn.style.background = '#71717a';
+          setTimeout(() => {
+            quickRenderBtn.textContent = orig;
+            quickRenderBtn.style.background = '';
+          }, 1500);
+          return;
+        }
+
         quickRender();
         const orig = quickRenderBtn.textContent;
         quickRenderBtn.textContent = '✓ Rendered!';
@@ -978,33 +1050,13 @@
       renderOverlay();
     });
 
-    // Submit batch
-    const submitBatchBtn = shadowRoot.querySelector<HTMLButtonElement>('[data-action="submit-batch"]');
-    if (submitBatchBtn) {
-      submitBatchBtn.addEventListener('click', async (e) => {
+    // Submit batch buttons (both main pill and popover)
+    shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="submit-batch"]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        submitBatchBtn.disabled = true;
-        submitBatchBtn.textContent = 'Submitting...';
-
-        // 1. Submit through SDK if present
-        const sdk = (globalThis as unknown as { __debugBridge?: { feedback?: { submitBatch?: () => Promise<void> } } }).__debugBridge?.feedback;
-        if (sdk?.submitBatch) {
-          try {
-            await sdk.submitBatch();
-          } catch {}
-        }
-
-        // 2. Generate and copy handoff prompt
-        await copyHandoffToClipboard(currentPromptText);
-
-        submitBatchBtn.textContent = '✓ Submitted to Agent!';
-        submitBatchBtn.style.background = '#16a34a';
-        setTimeout(() => {
-          showBatch = false;
-          renderOverlay();
-        }, 1200);
+        executeSubmit();
       });
-    }
+    });
 
     // Copy prompt button
     const copyBtn = shadowRoot.querySelector<HTMLButtonElement>('[data-action="copy-prompt"]');
