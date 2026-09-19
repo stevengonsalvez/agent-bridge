@@ -57,6 +57,13 @@ button {
 button:hover {
   background: #0056b3;
 }
+[data-testid="logout-btn"] {
+  background: coral;
+  border-radius: 20px;
+}
+[data-testid="logout-btn"]:hover {
+  background: #e06040;
+}
 .products {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

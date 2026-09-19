@@ -79,6 +79,7 @@ async function runValidation() {
     const palette = root?.querySelector('.floating-palette');
     const promptInput = root?.querySelector('[data-agent-prompt]');
     const quickRenderBtn = root?.querySelector('[data-action="quick-render"]');
+    const sendBtn = root?.querySelector('.btn-send-agent');
     const copyBtn = root?.querySelector('[data-action="copy-prompt"]');
     const interactBtn = root?.querySelector('[data-tool="interact"]');
     const divider = root?.querySelector('.mode-divider');
@@ -87,6 +88,7 @@ async function runValidation() {
       hasPalette: Boolean(palette),
       hasPromptInput: Boolean(promptInput),
       hasQuickRender: Boolean(quickRenderBtn),
+      hasSendBtn: Boolean(sendBtn),
       hasCopyBtn: Boolean(copyBtn),
       hasInteractBtn: Boolean(interactBtn),
       hasDivider: Boolean(divider),
@@ -96,11 +98,12 @@ async function runValidation() {
   assert.equal(paletteVisible.hasHost, true, 'Overlay host must be mounted');
   assert.equal(paletteVisible.hasPalette, true, 'Floating pill palette must be rendered');
   assert.equal(paletteVisible.hasPromptInput, true, 'Prompt input field must be present');
+  assert.equal(paletteVisible.hasSendBtn, true, 'Send to Agent button must be present on pill');
   assert.equal(paletteVisible.hasQuickRender, true, 'Quick Render button must be present');
   assert.equal(paletteVisible.hasCopyBtn, true, 'Copy prompt button must be present');
   assert.equal(paletteVisible.hasInteractBtn, true, 'Interact tool button must be present');
   assert.equal(paletteVisible.hasDivider, true, 'Mode divider must be present');
-  console.log('   ✓ Floating pill palette verified with interact toggle');
+  console.log('   ✓ Floating pill palette verified with interact toggle and Send button');
 
   // 3. Test interact/browse mode vs select mode
   console.log('3. Testing interact mode (typing in input, no click interception)...');
@@ -142,6 +145,18 @@ async function runValidation() {
   });
   assert.equal(promptVal, longPrompt, 'Prompt field should hold full long text without truncation or hotkey interference');
   console.log('   ✓ Full prompt text typed without hotkey interruption or character limit');
+
+  // 3c. Test pressing Enter in prompt field to submit to agent
+  console.log('3c. Testing Enter key submit in prompt field...');
+  await page.keyboard.press('Enter');
+  await new Promise((r) => setTimeout(r, 300));
+  const sendBtnText = await page.evaluate(() => {
+    const host = document.querySelector('[data-agent-bridge-design-overlay]');
+    const btn = host?.shadowRoot?.querySelector('.btn-send-agent');
+    return btn?.textContent?.trim();
+  });
+  assert.ok(sendBtnText?.includes('Sent to Agent') || sendBtnText?.includes('Submitting'), 'Send button should confirm submission');
+  console.log('   ✓ Pressing Enter triggers submission with visual confirmation:', sendBtnText);
 
   // 4. Test annotation tools (pen, region, arrow)
   console.log('4. Testing annotation tools: pen, region, and arrow...');
