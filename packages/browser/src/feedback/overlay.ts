@@ -15,7 +15,7 @@ export class FeedbackOverlay {
   private canvas: HTMLCanvasElement | null = null;
   private panelCollapsed = false;
   private activeTab: 'Batch' | 'Context' | 'Thread' = 'Batch';
-  private activeTool: Tool = 'select';
+  private activeTool: Tool = 'interact';
   private busy = false;
   private startPoint: { x: number; y: number } | null = null;
   private points: Array<{ x: number; y: number }> = [];
