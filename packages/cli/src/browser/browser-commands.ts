@@ -47,6 +47,7 @@ export function registerBrowserCommands(program: Command): void {
       browser: 'managed',
       profile: opts.profile,
       headless: isHeadless,
+      channel: opts.channel,
     };
 
     const server = startServer(config, {
@@ -63,6 +64,7 @@ export function registerBrowserCommands(program: Command): void {
       profile: config.profile,
       mode: 'managed',
       headless: isHeadless,
+      channel: opts.channel,
     });
 
     await sidecar.start();
@@ -95,6 +97,7 @@ export function registerBrowserCommands(program: Command): void {
     .option('-p, --port <number>', 'Bridge port', '4000')
     .option('-s, --session <string>', 'Session ID', 'default')
     .option('--profile <string>', 'Browser profile', 'agent-bridge-default')
+    .option('--channel <string>', 'Browser distribution channel (e.g. chrome, msedge, chromium)')
     .option('--headed', 'Launch browser with visible window', true)
     .option('--headless', 'Launch headless browser', false)
     .option('--json', 'Output result as JSON', false)
@@ -312,6 +315,7 @@ export function registerBrowserCommands(program: Command): void {
     .option('-p, --port <number>', 'Bridge port', '4000')
     .option('-s, --session <string>', 'Session ID', 'default')
     .option('--profile <string>', 'Browser profile', 'agent-bridge-default')
+    .option('--channel <string>', 'Browser distribution channel (e.g. chrome, msedge, chromium)')
     .option('--headed', 'Launch browser with visible window', true)
     .option('--headless', 'Launch headless browser', false)
     .option('-r, --request <text>', 'Requested change description for handoff or prompt', '')

@@ -13,6 +13,7 @@ export type BrowserSidecarOptions = {
   cdpEndpoint?: string;
   storageState?: string;
   headless?: boolean;
+  channel?: string;
 };
 
 export type BrowserSidecar = {
@@ -49,6 +50,7 @@ export function createBrowserSidecar(options: BrowserSidecarOptions): BrowserSid
         cdpEndpoint: options.cdpEndpoint,
         storageState: options.storageState,
         headless: options.headless ?? true,
+        channel: options.channel,
         send,
       });
 

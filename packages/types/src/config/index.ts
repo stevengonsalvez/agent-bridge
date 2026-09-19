@@ -9,6 +9,7 @@ export type CliConfig = {
   profile?: string;
   storageState?: string;
   headless?: boolean;
+  channel?: string;
   feedbackDir?: string;
   feedbackArtifacts?: boolean;
 };
