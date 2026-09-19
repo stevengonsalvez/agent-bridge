@@ -30,6 +30,15 @@ export class FeedbackOverlay {
 
   mount(): void {
     if (this.host) return;
+    // Single surface rule: bottom Design Mode pill is the unified surface.
+    // Defer to Design Mode runtime to prevent duplicate canvases and toolbars.
+    if (
+      (globalThis as unknown as { __agentBridgeDesignMode?: unknown }).__agentBridgeDesignMode ||
+      document.querySelector('[data-agent-bridge-design-overlay]') ||
+      document.querySelector('[data-agent-bridge-design-mode]')
+    ) {
+      return;
+    }
     this.host = document.createElement('div');
     this.host.setAttribute('data-debug-bridge-feedback-overlay', 'true');
     this.host.style.position = 'fixed';
@@ -73,44 +82,18 @@ export class FeedbackOverlay {
   }
 
   render(): void {
+    // If Design Mode runtime is active, unmount duplicate host immediately
+    if (
+      (globalThis as unknown as { __agentBridgeDesignMode?: unknown }).__agentBridgeDesignMode ||
+      document.querySelector('[data-agent-bridge-design-overlay]') ||
+      document.querySelector('[data-agent-bridge-design-mode]')
+    ) {
+      if (this.host) this.unmount();
+      return;
+    }
     if (!this.root) return;
-    const batch = this.controller.getBatch();
-    const current = this.controller.getCurrentItem();
-    this.root.innerHTML = `
-      <style>${styles}</style>
-      <canvas class="feedback-canvas" data-feedback-canvas></canvas>
-      <div class="toolbar" data-feedback-toolbar>
-        ${this.button('select', 'Select')}
-        ${this.button('region', 'Region')}
-        ${this.button('rect', 'Rect')}
-        ${this.button('highlight', 'Highlight')}
-        ${this.button('arrow', 'Arrow')}
-        ${this.button('pen', 'Pen')}
-        ${this.button('text', 'Text')}
-        <button data-action="undo" title="Undo">Undo</button>
-        <button data-action="redo" title="Redo">Redo</button>
-        <button data-action="clear" title="Clear current item">Clear</button>
-        ${this.button('interact', 'Interact')}
-        <button data-action="submit" title="Submit feedback batch">${this.busy ? 'Submitting' : 'Submit'}</button>
-      </div>
-      <button class="pill" data-feedback-pill data-action="open-panel">Feedback batch active (${batch?.items.length ?? 0})</button>
-      <aside class="panel ${this.panelCollapsed ? 'collapsed' : ''}" data-feedback-panel>
-        <header>
-          <strong>Feedback</strong>
-          <button data-action="collapse" title="Collapse panel">${this.panelCollapsed ? 'Open' : 'Close'}</button>
-        </header>
-        <nav class="tabs">
-          ${(['Batch', 'Context', 'Thread'] as const).map((tab) => `<button data-tab="${tab}" class="${this.activeTab === tab ? 'active' : ''}">${tab}</button>`).join('')}
-        </nav>
-        <section class="panel-body">${this.renderPanelBody(current)}</section>
-      </aside>
-    `;
-
-    this.canvas = this.root.querySelector('[data-feedback-canvas]');
-    this.resizeCanvas();
-    if (this.canvas) this.canvas.style.pointerEvents = this.activeTool === 'interact' ? 'none' : 'auto';
-    this.bindRootEvents();
-    this.paintCanvas();
+    // Keep overlay clean without redundant top toolbar or side panel
+    this.root.innerHTML = '';
   }
 
   private renderPanelBody(current: ReturnType<FeedbackController['getCurrentItem']>): string {
