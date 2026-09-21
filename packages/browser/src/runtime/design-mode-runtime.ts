@@ -316,6 +316,37 @@ import { resolvePromptToCss } from './quick-render-jev';
     }
   };
 
+  const renderBoxLayerHtml = () => {
+    return `
+      ${hoveredElement && activeTool === 'select' && !selections.some((s) => s.element === hoveredElement) ? `
+        <div class="box hover-box" style="
+          left: ${hoveredElement.getBoundingClientRect().left + window.scrollX}px;
+          top: ${hoveredElement.getBoundingClientRect().top + window.scrollY}px;
+          width: ${hoveredElement.getBoundingClientRect().width}px;
+          height: ${hoveredElement.getBoundingClientRect().height}px;
+        "></div>
+      ` : ''}
+
+      ${selections.map((sel, idx) => {
+        const rect = sel.element.getBoundingClientRect();
+        return `
+          <div class="box selected-box" style="
+            --box-color: ${sel.color};
+            left: ${rect.left + window.scrollX}px;
+            top: ${rect.top + window.scrollY}px;
+            width: ${rect.width}px;
+            height: ${rect.height}px;
+          ">
+            <div class="badge">
+              <span>@e${idx + 1} &lt;${sel.element.localName}&gt;</span>
+              <button data-remove-selection="${idx}" title="Deselect">&times;</button>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    `;
+  };
+
   const renderOverlay = () => {
     if (!shadowRoot) return;
 
@@ -350,17 +381,21 @@ import { resolvePromptToCss } from './quick-render-jev';
 
         /* Floating pill palette at bottom center */
         .floating-palette {
-          position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+          position: fixed; bottom: max(16px, env(safe-area-inset-bottom, 16px)); left: 50%; transform: translateX(-50%);
           display: flex; align-items: center; gap: 6px; padding: 5px 8px;
           background: rgba(22, 22, 26, 0.94); backdrop-filter: blur(20px);
           border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 9999px;
           box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06);
           color: #f4f4f5; pointer-events: auto; z-index: 100;
-          max-width: 90vw; box-sizing: border-box;
+          max-width: calc(100vw - 16px); width: auto; box-sizing: border-box;
+          overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
+          scrollbar-width: none;
         }
+        .floating-palette::-webkit-scrollbar { display: none; }
 
         /* Mode toggle segment */
         .mode-group {
+          flex-shrink: 0;
           display: flex; align-items: center; gap: 2px;
           padding: 2px; background: rgba(255, 255, 255, 0.08); border-radius: 9999px;
         }
@@ -371,7 +406,7 @@ import { resolvePromptToCss } from './quick-render-jev';
           width: 28px; height: 28px; border-radius: 50%; border: none;
           background: transparent; color: rgba(255, 255, 255, 0.55);
           cursor: pointer; display: flex; align-items: center; justify-content: center;
-          transition: all 0.15s ease; padding: 0; outline: none;
+          transition: all 0.15s ease; padding: 0; outline: none; flex-shrink: 0;
         }
         .mode-btn:hover { color: #fff; }
         .mode-btn.active {
@@ -382,8 +417,9 @@ import { resolvePromptToCss } from './quick-render-jev';
 
         /* Chips row */
         .chips-container {
+          flex-shrink: 0;
           display: flex; align-items: center; gap: 5px;
-          max-width: 320px; overflow-x: auto; scrollbar-width: none;
+          max-width: 240px; overflow-x: auto; scrollbar-width: none;
         }
         .chips-container::-webkit-scrollbar { display: none; }
         .chip {
@@ -391,7 +427,7 @@ import { resolvePromptToCss } from './quick-render-jev';
           border-radius: 9999px; font-size: 11px; font-weight: 500;
           background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12);
           color: var(--chip-color, #93c5fd); cursor: pointer; user-select: none;
-          white-space: nowrap; transition: all 0.15s ease;
+          white-space: nowrap; transition: all 0.15s ease; flex-shrink: 0;
         }
         .chip.active {
           background: rgba(255, 255, 255, 0.16);
@@ -409,19 +445,20 @@ import { resolvePromptToCss } from './quick-render-jev';
         .prompt-field {
           background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 9999px;
           outline: none; color: #fafafa; font-size: 12px;
-          min-width: 200px; max-width: 600px; width: 320px;
+          min-width: 140px; max-width: 420px; width: 220px; flex: 1 1 auto;
           padding: 5px 12px; font-family: inherit;
-          transition: width 0.2s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+          transition: width 0.2s ease, max-width 0.2s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
         }
         .prompt-field:focus {
           border-color: #3b82f6; background: rgba(255, 255, 255, 0.1);
           box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
-          width: 460px;
+          max-width: 320px; width: 260px;
         }
         .prompt-field::placeholder { color: rgba(255, 255, 255, 0.38); }
 
         /* Action buttons */
         .btn-action {
+          flex-shrink: 0;
           height: 28px; padding: 0 10px; border-radius: 9999px; font-size: 11px; font-weight: 600;
           cursor: pointer; display: flex; align-items: center; gap: 5px; border: none;
           outline: none; transition: all 0.15s ease; white-space: nowrap;
@@ -509,11 +546,12 @@ import { resolvePromptToCss } from './quick-render-jev';
         /* Info popover for explanations */
         .info-popover {
           position: fixed;
-          bottom: 74px;
+          bottom: max(68px, calc(env(safe-area-inset-bottom, 12px) + 54px));
           left: 50%;
           transform: translateX(-50%);
-          width: 400px;
-          max-height: 480px;
+          width: min(400px, calc(100vw - 20px));
+          max-height: min(480px, calc(100vh - 90px));
+          box-sizing: border-box;
           overflow-y: auto;
           background: #18181b;
           color: #f4f4f5;
@@ -609,29 +647,43 @@ import { resolvePromptToCss } from './quick-render-jev';
           background: ${showTweaker ? '#3b82f6' : 'rgba(255, 255, 255, 0.08)'};
           color: ${showTweaker ? '#fff' : 'rgba(255, 255, 255, 0.8)'};
           padding: 0 8px;
+          flex-shrink: 0;
         }
         .btn-tweak:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
         .btn-icon {
           width: 28px; height: 28px; padding: 0; border-radius: 50%;
           background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.8);
           border: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
-          outline: none; transition: all 0.15s ease;
+          outline: none; transition: all 0.15s ease; flex-shrink: 0;
         }
         .btn-icon:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
         .btn-copy {
-          background: rgba(255, 255, 255, 0.1); color: #fff;
+          background: rgba(255, 255, 255, 0.1); color: #fff; flex-shrink: 0;
         }
         .btn-copy:hover { background: rgba(255, 255, 255, 0.2); }
         .btn-copy svg { width: 14px; height: 14px; fill: currentColor; }
 
         /* Tweaker popover card anchored above palette */
         .tweaker-popover {
-          position: fixed; bottom: 74px; left: 50%; transform: translateX(-50%);
-          width: 380px; max-height: 480px; overflow-y: auto;
-          background: #18181b; color: #f4f4f5; border: 1px solid #27272a;
-          border-radius: 14px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
-          display: flex; flex-direction: column; gap: 8px; padding: 12px 14px;
-          pointer-events: auto; z-index: 100;
+          position: fixed;
+          bottom: max(68px, calc(env(safe-area-inset-bottom, 12px) + 54px));
+          left: 50%;
+          transform: translateX(-50%);
+          width: min(380px, calc(100vw - 20px));
+          max-height: min(480px, calc(100vh - 90px));
+          box-sizing: border-box;
+          overflow-y: auto;
+          background: #18181b;
+          color: #f4f4f5;
+          border: 1px solid #27272a;
+          border-radius: 14px;
+          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          padding: 12px 14px;
+          pointer-events: auto;
+          z-index: 100;
         }
         .popover-header {
           display: flex; align-items: center; justify-content: space-between;
@@ -641,6 +693,7 @@ import { resolvePromptToCss } from './quick-render-jev';
         .target-meta {
           background: #27272a; border-radius: 6px; padding: 6px 8px; font-size: 10.5px;
           font-family: ui-monospace, monospace; display: flex; flex-direction: column; gap: 3px;
+          overflow: hidden;
         }
         .target-selector { color: #93c5fd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .target-xpath { color: #a1a1aa; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -649,6 +702,7 @@ import { resolvePromptToCss } from './quick-render-jev';
         .row input {
           padding: 4px 7px; background: #27272a; border: 1px solid #3f3f46; border-radius: 5px;
           font-size: 11px; color: #fafafa; font-family: ui-monospace, monospace; outline: none;
+          min-width: 0; box-sizing: border-box;
         }
         .row input:focus { border-color: #3b82f6; }
         .diff-preview {
@@ -664,11 +718,13 @@ import { resolvePromptToCss } from './quick-render-jev';
           padding: 0 10px;
           border: 1px solid ${showBatch ? '#3b82f6' : 'rgba(255, 255, 255, 0.12)'};
           display: flex; align-items: center; gap: 4px;
+          flex-shrink: 0;
         }
         .btn-batch:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
         .btn-send-agent {
           background: #2563eb; color: #fff; font-weight: 600;
           padding: 0 12px; display: flex; align-items: center; gap: 4px;
+          flex-shrink: 0;
         }
         .btn-send-agent:hover { background: #1d4ed8; }
         .batch-count-badge {
@@ -677,12 +733,25 @@ import { resolvePromptToCss } from './quick-render-jev';
         }
 
         .batch-popover {
-          position: fixed; bottom: 74px; left: 50%; transform: translateX(-50%);
-          width: 420px; max-height: 480px; overflow-y: auto;
-          background: #18181b; color: #f4f4f5; border: 1px solid #27272a;
-          border-radius: 14px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
-          display: flex; flex-direction: column; gap: 10px; padding: 14px 16px;
-          pointer-events: auto; z-index: 100;
+          position: fixed;
+          bottom: max(68px, calc(env(safe-area-inset-bottom, 12px) + 54px));
+          left: 50%;
+          transform: translateX(-50%);
+          width: min(420px, calc(100vw - 20px));
+          max-height: min(480px, calc(100vh - 90px));
+          box-sizing: border-box;
+          overflow-y: auto;
+          background: #18181b;
+          color: #f4f4f5;
+          border: 1px solid #27272a;
+          border-radius: 14px;
+          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          padding: 14px 16px;
+          pointer-events: auto;
+          z-index: 100;
         }
         .batch-section { display: flex; flex-direction: column; gap: 4px; }
         .batch-label { font-size: 10px; color: #a1a1aa; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; }
@@ -705,37 +774,73 @@ import { resolvePromptToCss } from './quick-render-jev';
           transition: all 0.15s ease;
         }
         .btn-submit-batch:hover { background: #1d4ed8; }
+
+        @media (max-width: 640px) {
+          .floating-palette {
+            bottom: max(8px, env(safe-area-inset-bottom, 8px));
+            padding: 4px 6px;
+            gap: 4px;
+            border-radius: 9999px;
+            max-width: calc(100vw - 12px);
+          }
+          .mode-group {
+            padding: 1px;
+            gap: 1px;
+          }
+          .mode-btn {
+            width: 26px;
+            height: 26px;
+          }
+          .mode-btn svg {
+            width: 13px;
+            height: 13px;
+          }
+          .prompt-field {
+            min-width: 100px;
+            width: 130px;
+            font-size: 11px;
+            padding: 4px 8px;
+          }
+          .prompt-field:focus {
+            width: 160px;
+            max-width: 200px;
+          }
+          .btn-action {
+            height: 26px;
+            padding: 0 8px;
+            font-size: 10.5px;
+          }
+          .btn-quick-render-ai, .btn-quick-render-manual {
+            height: 24px;
+            padding: 0 7px;
+            font-size: 10px;
+          }
+          .btn-icon {
+            width: 26px;
+            height: 26px;
+          }
+          .btn-icon svg {
+            width: 13px;
+            height: 13px;
+          }
+          .chips-container {
+            max-width: 110px;
+          }
+          .chip {
+            padding: 1px 5px;
+            font-size: 10px;
+          }
+          .tweaker-popover, .batch-popover, .info-popover {
+            bottom: max(56px, calc(env(safe-area-inset-bottom, 8px) + 48px));
+            padding: 10px 12px;
+          }
+        }
       </style>
 
       <canvas class="design-canvas" data-canvas></canvas>
 
       <div class="box-layer">
-        ${hoveredElement && activeTool === 'select' && !selections.some((s) => s.element === hoveredElement) ? `
-          <div class="box hover-box" style="
-            left: ${hoveredElement.getBoundingClientRect().left + window.scrollX}px;
-            top: ${hoveredElement.getBoundingClientRect().top + window.scrollY}px;
-            width: ${hoveredElement.getBoundingClientRect().width}px;
-            height: ${hoveredElement.getBoundingClientRect().height}px;
-          "></div>
-        ` : ''}
-
-        ${selections.map((sel, idx) => {
-          const rect = sel.element.getBoundingClientRect();
-          return `
-            <div class="box selected-box" style="
-              --box-color: ${sel.color};
-              left: ${rect.left + window.scrollX}px;
-              top: ${rect.top + window.scrollY}px;
-              width: ${rect.width}px;
-              height: ${rect.height}px;
-            ">
-              <div class="badge">
-                <span>@e${idx + 1} &lt;${sel.element.localName}&gt;</span>
-                <button data-remove-selection="${idx}" title="Deselect">&times;</button>
-              </div>
-            </div>
-          `;
-        }).join('')}
+        ${renderBoxLayerHtml()}
       </div>
 
       ${showTweaker && activeSel ? `
@@ -1907,6 +2012,23 @@ import { resolvePromptToCss } from './quick-render-jev';
     return quickRenderManual();
   };
 
+  const handleViewportChange = () => {
+    resizeCanvas();
+    paintCanvas();
+    const boxLayer = shadowRoot?.querySelector('.box-layer');
+    if (boxLayer) {
+      boxLayer.innerHTML = renderBoxLayerHtml();
+      boxLayer.querySelectorAll('[data-remove-selection]').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = parseInt((btn as HTMLElement).dataset.removeSelection || '0', 10);
+          removeSelection(idx);
+          renderOverlay();
+        });
+      });
+    }
+  };
+
   const runtimeApi = {
     enable: () => {
       enabled = true;
@@ -1914,10 +2036,10 @@ import { resolvePromptToCss } from './quick-render-jev';
       document.addEventListener('mousemove', handlePointerMove, true);
       document.addEventListener('click', handleClick, true);
       document.addEventListener('keydown', handleKeyDown, true);
-      window.addEventListener('resize', () => {
-        resizeCanvas();
-        paintCanvas();
-      });
+      window.addEventListener('resize', handleViewportChange);
+      window.addEventListener('scroll', handleViewportChange, { passive: true });
+      window.visualViewport?.addEventListener('resize', handleViewportChange);
+      window.visualViewport?.addEventListener('scroll', handleViewportChange);
       return getSnapshot();
     },
     disable: () => {
@@ -1925,6 +2047,10 @@ import { resolvePromptToCss } from './quick-render-jev';
       document.removeEventListener('mousemove', handlePointerMove, true);
       document.removeEventListener('click', handleClick, true);
       document.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('scroll', handleViewportChange);
+      window.visualViewport?.removeEventListener('resize', handleViewportChange);
+      window.visualViewport?.removeEventListener('scroll', handleViewportChange);
       removeOverlay();
       return getSnapshot();
     },
