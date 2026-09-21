@@ -7,6 +7,7 @@ import './styles.css';
 
 if (import.meta.env.DEV) {
   initDebugBridge();
+  (window as unknown as { __agentBridgeDesignMode?: { enable: () => void } }).__agentBridgeDesignMode?.enable();
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
