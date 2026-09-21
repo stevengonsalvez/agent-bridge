@@ -25,6 +25,8 @@ export type DesignModeSelection = {
   computed_styles: Record<string, string>;
   color: string;
   screenshot_path?: string;
+  react_components?: string[];
+  react_prop_keys?: string[];
 };
 
 export type DesignModeEdit = {
@@ -54,8 +56,15 @@ export type DesignModeMark = {
 
 export type DesignModeArtifacts = {
   screenshot_path?: string;
+  page_screenshot_path?: string;
+  element_screenshot_paths?: string[];
   live_context_path?: string;
   context_json_path?: string;
+};
+
+export type DesignModePromptToken = {
+  selection?: number;
+  text?: string;
 };
 
 export type DesignModeSnapshot = {
@@ -82,7 +91,7 @@ export type DesignModeHandoffPayload = {
   page_screenshot_path?: string;
   live_context_path?: string;
   context_json_path?: string;
-  prompt: string;
+  prompt: string | DesignModePromptToken[];
 };
 
 export type InteractiveElementRef = {
