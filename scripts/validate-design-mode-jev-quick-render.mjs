@@ -143,10 +143,95 @@ async function main() {
   if (updatedComputed.fontSize !== '18px') {
     throw new Error(`Expected fontSize 18px but got ${updatedComputed.fontSize}`);
   }
-  console.log('   ✓ Programmatic Quick Render updated font-family to Poppins and font-size to 18px!');
+  console.log('7. Testing Question Mark (?) Info Popover for Quick Render (AI)...');
+  await page.evaluate(() => {
+    const host = document.querySelector('[data-agent-bridge-design-overlay]');
+    const aiInfoBtn = host.shadowRoot.querySelector('[data-action="toggle-info-ai"]');
+    aiInfoBtn.click();
+  });
+
+  const aiInfoVisible = await page.evaluate(() => {
+    const host = document.querySelector('[data-agent-bridge-design-overlay]');
+    const popover = host.shadowRoot.querySelector('.info-popover');
+    return {
+      isOpen: Boolean(popover),
+      title: popover?.querySelector('.info-title')?.textContent,
+      badge: popover?.querySelector('.info-badge')?.textContent,
+    };
+  });
+
+  if (!aiInfoVisible.isOpen || !aiInfoVisible.title?.includes('Quick Render (AI)')) {
+    throw new Error(`Expected AI info popover to open but got: ${JSON.stringify(aiInfoVisible)}`);
+  }
+  console.log(`   ✓ AI Info Popover rendered: "${aiInfoVisible.title}" [${aiInfoVisible.badge}]`);
+
+  // Close AI info
+  await page.evaluate(() => {
+    const host = document.querySelector('[data-agent-bridge-design-overlay]');
+    host.shadowRoot.querySelector('[data-action="close-info"]')?.click();
+  });
+
+  console.log('8. Testing Question Mark (?) Info Popover for Quick Render (Manual)...');
+  await page.evaluate(() => {
+    const host = document.querySelector('[data-agent-bridge-design-overlay]');
+    const manualInfoBtn = host.shadowRoot.querySelector('[data-action="toggle-info-manual"]');
+    manualInfoBtn.click();
+  });
+
+  const manualInfoVisible = await page.evaluate(() => {
+    const host = document.querySelector('[data-agent-bridge-design-overlay]');
+    const popover = host.shadowRoot.querySelector('.info-popover');
+    return {
+      isOpen: Boolean(popover),
+      title: popover?.querySelector('.info-title')?.textContent,
+      badge: popover?.querySelector('.info-badge')?.textContent,
+    };
+  });
+
+  if (!manualInfoVisible.isOpen || !manualInfoVisible.title?.includes('Quick Render (Manual)')) {
+    throw new Error(`Expected Manual info popover to open but got: ${JSON.stringify(manualInfoVisible)}`);
+  }
+  console.log(`   ✓ Manual Info Popover rendered: "${manualInfoVisible.title}" [${manualInfoVisible.badge}]`);
+
+  // Close Manual info
+  await page.evaluate(() => {
+    const host = document.querySelector('[data-agent-bridge-design-overlay]');
+    host.shadowRoot.querySelector('[data-action="close-info"]')?.click();
+  });
+
+  console.log('9. Testing Quick Render (Manual) with direct style tweaks...');
+  await page.evaluate(() => {
+    const host = document.querySelector('[data-agent-bridge-design-overlay]');
+    // Open tweaker popover
+    host.shadowRoot.querySelector('[data-action="toggle-tweaker"]')?.click();
+  });
+
+  await page.evaluate(() => {
+    const host = document.querySelector('[data-agent-bridge-design-overlay]');
+    const padInput = host.shadowRoot.querySelector('[data-edit-prop="padding"]');
+    if (padInput) {
+      padInput.value = '22px 35px';
+      padInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    const manualBtn = host.shadowRoot.querySelector('[data-action="quick-render-manual"]');
+    manualBtn.click();
+  });
+
+  const manualComputed = await page.evaluate(() => {
+    const btn = document.getElementById('target-btn');
+    const style = window.getComputedStyle(btn);
+    return {
+      padding: style.padding,
+    };
+  });
+  console.log(`   Computed padding after manual render: ${manualComputed.padding}`);
+  if (!manualComputed.padding.includes('22px')) {
+    throw new Error(`Expected padding to include 22px but got ${manualComputed.padding}`);
+  }
+  console.log('   ✓ Quick Render (Manual) successfully updated DOM live preview!');
 
   await browser.close();
-  console.log('\n=== All Design Mode Jev Quick Render Validations Passed 100% Green ===');
+  console.log('\n=== All Design Mode Jev & Manual Quick Render Validations Passed 100% Green ===');
 }
 
 main().catch((err) => {

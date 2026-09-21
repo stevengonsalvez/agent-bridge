@@ -84,19 +84,54 @@ async def main():
         overlay_host = page.locator("[data-agent-bridge-design-overlay]")
         await overlay_host.wait_for(state="attached", timeout=5000)
         
+        # --- TEST 1: Question mark (?) Info Popover for AI Quick Render ---
+        print("6. Testing '?' info question mark for Quick Render (AI)...")
+        ai_info_btn = overlay_host.locator('[data-action="toggle-info-ai"]')
+        await ai_info_btn.wait_for(state="visible", timeout=5000)
+        await ai_info_btn.click()
+
+        info_popover = overlay_host.locator('.info-popover')
+        await info_popover.wait_for(state="visible", timeout=5000)
+        ai_title = await overlay_host.locator('.info-title').text_content()
+        ai_badge = await overlay_host.locator('.info-badge').text_content()
+        print(f"   ✓ AI info popover open: '{ai_title}' [{ai_badge}]")
+        await page.screenshot(path="/tmp/quick-render-ai-info.png")
+
+        # Close AI info
+        await overlay_host.locator('[data-action="close-info"]').click()
+        await info_popover.wait_for(state="detached", timeout=5000)
+        print("   ✓ AI info popover closed cleanly")
+
+        # --- TEST 2: Question mark (?) Info Popover for Manual Quick Render ---
+        print("7. Testing '?' info question mark for Quick Render (Manual)...")
+        manual_info_btn = overlay_host.locator('[data-action="toggle-info-manual"]').first
+        await manual_info_btn.wait_for(state="visible", timeout=5000)
+        await manual_info_btn.click()
+
+        await info_popover.wait_for(state="visible", timeout=5000)
+        manual_title = await overlay_host.locator('.info-title').text_content()
+        manual_badge = await overlay_host.locator('.info-badge').text_content()
+        print(f"   ✓ Manual info popover open: '{manual_title}' [{manual_badge}]")
+        await page.screenshot(path="/tmp/quick-render-manual-info.png")
+
+        # Close Manual info
+        await overlay_host.locator('[data-action="close-info"]').click()
+        await info_popover.wait_for(state="detached", timeout=5000)
+        print("   ✓ Manual info popover closed cleanly")
+
+        # --- TEST 3: AI Quick Render via Jev ---
         prompt_input = overlay_host.locator("[data-agent-prompt]")
         await prompt_input.wait_for(state="visible", timeout=5000)
-        print(f"6. Typing prompt into [data-agent-prompt]: '{PROMPT}' ...")
+        print(f"8. Typing prompt into [data-agent-prompt]: '{PROMPT}' ...")
         await prompt_input.fill(PROMPT)
 
-        # Locate and click '⚡ Quick Render' button
-        quick_render_btn = overlay_host.locator('[data-action="quick-render"]')
+        quick_render_btn = overlay_host.locator('[data-action="quick-render"], [data-action-ai="quick-render-ai"]').first
         await quick_render_btn.wait_for(state="visible", timeout=5000)
-        print("7. Clicking '⚡ Quick Render' button [data-action='quick-render'] ...")
+        print("9. Clicking '⚡ AI Render' button ...")
         await quick_render_btn.click()
 
         # Wait for #__agent_bridge_live_preview__ to appear in document.head
-        print("8. Waiting for <style id='__agent_bridge_live_preview__'> in document.head ...")
+        print("10. Waiting for <style id='__agent_bridge_live_preview__'> in document.head ...")
         style_el = page.locator("#__agent_bridge_live_preview__")
         await style_el.wait_for(state="attached", timeout=5000)
         
@@ -104,7 +139,7 @@ async def main():
             "#__agent_bridge_live_preview__",
             "el => el.textContent"
         )
-        print(f"   ✓ Injected CSS rules:\n{injected_css.strip()}")
+        print(f"   ✓ Injected AI CSS rules:\n{injected_css.strip()}")
 
         # Check new computed styles of button[data-testid="logout-btn"]
         new_styles = await page.evaluate("""() => {
@@ -117,36 +152,60 @@ async def main():
                 padding: cs.padding
             };
         }""")
-        print(f"9. Recorded new computed styles: {new_styles}")
+        print(f"11. Recorded styles after AI Quick Render: {new_styles}")
 
-        # Assertions
-        # Verify background-color is teal / rgb(0, 128, 128)
         assert new_styles["backgroundColor"] == "rgb(0, 128, 128)", (
             f"Expected backgroundColor to be 'rgb(0, 128, 128)', got '{new_styles['backgroundColor']}'"
         )
-        # Verify border-radius is 24px
         assert new_styles["borderRadius"] == "24px", (
             f"Expected borderRadius to be '24px', got '{new_styles['borderRadius']}'"
         )
-        print("   ✓ Computed styles verification passed (teal background + 24px border radius)")
-
-        # Take screenshot saving to /tmp/quick-render-verified.png
-        print(f"10. Taking screenshot and saving to {SCREENSHOT_PATH} ...")
+        print("   ✓ AI Quick Render styles verification passed (teal background + 24px border radius)")
         await page.screenshot(path=SCREENSHOT_PATH, full_page=False)
-        assert os.path.exists(SCREENSHOT_PATH), f"Screenshot was not created at {SCREENSHOT_PATH}"
-        print(f"   ✓ Screenshot successfully saved to {SCREENSHOT_PATH} ({os.path.getsize(SCREENSHOT_PATH)} bytes)")
+
+        # --- TEST 4: Manual Quick Render via Inspector Tweaks ---
+        print("12. Testing Quick Render (Manual) with Inspector tweaks...")
+        tweaker_btn = overlay_host.locator('[data-action="toggle-tweaker"]')
+        await tweaker_btn.click()
+
+        pad_input = overlay_host.locator('[data-edit-prop="padding"]')
+        await pad_input.wait_for(state="visible", timeout=5000)
+        await pad_input.fill("18px 36px")
+
+        manual_render_btn = overlay_host.locator('[data-action="quick-render-manual"]').first
+        await manual_render_btn.click()
+
+        manual_styles = await page.evaluate("""() => {
+            const btn = document.querySelector('button[data-testid="logout-btn"]');
+            const cs = window.getComputedStyle(btn);
+            return {
+                backgroundColor: cs.backgroundColor,
+                borderRadius: cs.borderRadius,
+                padding: cs.padding
+            };
+        }""")
+        print(f"13. Recorded styles after Manual Quick Render: {manual_styles}")
+        assert "18px" in manual_styles["padding"], f"Expected padding to have 18px, got {manual_styles['padding']}"
+        print("   ✓ Manual Quick Render styles verification passed (18px padding applied live)")
+
+        await page.screenshot(path="/tmp/quick-render-manual-applied.png", full_page=False)
 
         await browser.close()
 
-        # Output final structured JSON summary for easy parsing
+        # Output final structured JSON summary
         result_summary = {
-            "prompt": PROMPT,
+            "ai_prompt": PROMPT,
             "selected_selector": selected_selector,
-            "injected_css": injected_css.strip(),
+            "ai_injected_css": injected_css.strip(),
             "styles_before": initial_styles,
-            "styles_after": new_styles,
-            "screenshot_path": SCREENSHOT_PATH,
-            "screenshot_size_bytes": os.path.getsize(SCREENSHOT_PATH),
+            "styles_after_ai": new_styles,
+            "styles_after_manual": manual_styles,
+            "screenshots": [
+                "/tmp/quick-render-ai-info.png",
+                "/tmp/quick-render-manual-info.png",
+                SCREENSHOT_PATH,
+                "/tmp/quick-render-manual-applied.png",
+            ],
         }
         print("\n=== FINAL VERIFICATION RESULT JSON ===")
         print(json.dumps(result_summary, indent=2))
