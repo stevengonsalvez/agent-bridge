@@ -1,6 +1,7 @@
 ---
 name: test-design-mode
 description: Automated end-to-end testing suite and subagent protocol for validating Agent Bridge Design Mode across mobile (phone) and desktop viewports, testing toolbar visibility, tool switching, info popovers, AI quick render, manual tweaks, and batch submissions.
+user-invocable: true
 triggers:
   - test design mode
   - run design mode tests
