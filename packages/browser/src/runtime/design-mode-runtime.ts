@@ -6,6 +6,8 @@
  * and structured artifact clipboard handoff.
  */
 
+import { resolvePromptToCss } from './quick-render-jev';
+
 (() => {
   'use strict';
 
@@ -642,7 +644,7 @@
             <div class="batch-label">Visual Annotations (${marks.length})</div>
             ${marks.length === 0 ? '<div class="batch-empty">No visual annotations drawn.</div>' : `
               <div style="display:flex;flex-direction:column;gap:5px;">
-                ${marks.map((m, idx) => `
+                ${marks.map((m) => `
                   <div class="batch-item">
                     <div class="batch-item-left">
                       <span style="color:${m.color};">${m.type === 'region' ? '◰' : m.type === 'arrow' ? '↗' : '✏'}</span>
@@ -927,7 +929,7 @@
 
     // Submit action handler (used by Enter key and Send/Submit buttons)
     const executeSubmit = async () => {
-      const allSubmitBtns = shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="submit-batch"]');
+      const allSubmitBtns = shadowRoot?.querySelectorAll<HTMLButtonElement>('[data-action="submit-batch"]') || [];
       allSubmitBtns.forEach((btn) => {
         btn.disabled = true;
         btn.textContent = 'Submitting...';
@@ -994,11 +996,12 @@
     // Quick render button
     const quickRenderBtn = shadowRoot.querySelector<HTMLButtonElement>('[data-action="quick-render"]');
     if (quickRenderBtn) {
-      quickRenderBtn.addEventListener('click', () => {
+      quickRenderBtn.addEventListener('click', async () => {
+        const hasPrompt = !!currentPromptText.trim();
         const hasEdits = edits.size > 0;
-        if (!hasEdits) {
+        if (!hasPrompt && !hasEdits) {
           const orig = quickRenderBtn.textContent;
-          quickRenderBtn.textContent = 'No CSS tweaks';
+          quickRenderBtn.textContent = 'No prompt or tweaks';
           quickRenderBtn.style.background = '#71717a';
           setTimeout(() => {
             quickRenderBtn.textContent = orig;
@@ -1007,9 +1010,12 @@
           return;
         }
 
-        quickRender();
         const orig = quickRenderBtn.textContent;
-        quickRenderBtn.textContent = '✓ Rendered!';
+        if (hasPrompt) {
+          quickRenderBtn.textContent = '⚡ Jev Rendering...';
+        }
+        await quickRender();
+        quickRenderBtn.textContent = hasPrompt ? '✓ Rendered (Jev)!' : '✓ Rendered!';
         quickRenderBtn.style.background = '#16a34a';
         setTimeout(() => {
           quickRenderBtn.textContent = orig;
@@ -1488,11 +1494,62 @@
     document.getElementById('__agent_bridge_live_preview__')?.remove();
   };
 
-  const quickRender = (customCss?: string) => {
-    if (typeof customCss === 'string') {
-      applyLivePatch(customCss);
-      return;
+  const quickRender = async (customCssOrPrompt?: string) => {
+    if (typeof customCssOrPrompt === 'string') {
+      const trimmed = customCssOrPrompt.trim();
+      if (trimmed.includes('{') && trimmed.includes('}')) {
+        applyLivePatch(trimmed);
+        return;
+      }
+      const sel = selections[0];
+      if (sel) {
+        const result = await resolvePromptToCss(trimmed, {
+          selector: sel.selector,
+          tagName: sel.element.localName,
+          textContent: sel.element.textContent?.slice(0, 100),
+          currentStyles: sel.originalStyles,
+        });
+        if (result.css) {
+          applyLivePatch(result.css);
+          Object.entries(result.declarations).forEach(([prop, val]) => {
+            const editId = `0::${prop}`;
+            edits.set(editId, {
+              id: editId,
+              kind: 'style',
+              property: prop,
+              original_value: sel.originalStyles[prop] || '',
+              value: val,
+            });
+          });
+          return result;
+        }
+      }
     }
+
+    if (currentPromptText.trim() && selections[0]) {
+      const sel = selections[0];
+      const result = await resolvePromptToCss(currentPromptText.trim(), {
+        selector: sel.selector,
+        tagName: sel.element.localName,
+        textContent: sel.element.textContent?.slice(0, 100),
+        currentStyles: sel.originalStyles,
+      });
+      if (result.css) {
+        applyLivePatch(result.css);
+        Object.entries(result.declarations).forEach(([prop, val]) => {
+          const editId = `0::${prop}`;
+          edits.set(editId, {
+            id: editId,
+            kind: 'style',
+            property: prop,
+            original_value: sel.originalStyles[prop] || '',
+            value: val,
+          });
+        });
+        return result;
+      }
+    }
+
     const grouped = new Map<string, StoredEdit[]>();
     for (const edit of edits.values()) {
       if (edit.kind !== 'style') continue;
@@ -1508,7 +1565,9 @@
       const declarations = editList.map((e) => `${e.property}: ${e.value} !important;`).join(' ');
       rules.push(`${sel.selector} {\n  ${declarations}\n}`);
     }
-    applyLivePatch(rules.join('\n\n'));
+    if (rules.length > 0) {
+      applyLivePatch(rules.join('\n\n'));
+    }
   };
 
   const runtimeApi = {
