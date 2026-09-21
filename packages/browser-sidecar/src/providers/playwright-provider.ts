@@ -516,6 +516,17 @@ export class PlaywrightProvider {
     this.targets.set(id, target);
     if (select || !this.selectedTargetId) this.selectedTargetId = id;
 
+    try {
+      await page.exposeFunction('__agentBridgeHost', async (msg: { type: string; payload?: Record<string, unknown> }) => {
+        if (msg?.type === 'design_mode_handoff') {
+          const change = typeof msg.payload?.requested_change === 'string' ? msg.payload.requested_change : undefined;
+          await this.generateDesignModeArtifacts(target, change);
+        }
+      });
+    } catch {
+      // Ignore if function already exposed
+    }
+
     page.on('close', () => {
       this.targets.delete(id);
       this.options.send({

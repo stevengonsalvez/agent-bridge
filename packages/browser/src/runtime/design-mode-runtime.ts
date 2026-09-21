@@ -1403,6 +1403,10 @@ import { resolvePromptToCss } from './quick-render-jev';
     shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="quick-render"], [data-action="quick-render-ai"]').forEach((quickRenderBtn) => {
       quickRenderBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
+        const promptInput = shadowRoot.querySelector<HTMLInputElement>('[data-agent-prompt]');
+        if (promptInput && promptInput.value !== undefined) {
+          currentPromptText = promptInput.value;
+        }
         const hasPrompt = !!currentPromptText.trim();
         if (!hasPrompt) {
           const orig = quickRenderBtn.textContent;
@@ -1415,6 +1419,17 @@ import { resolvePromptToCss } from './quick-render-jev';
           return;
         }
 
+        if (selections.length === 0) {
+          const orig = quickRenderBtn.textContent;
+          quickRenderBtn.textContent = 'Select element first';
+          quickRenderBtn.style.background = '#f59e0b';
+          setTimeout(() => {
+            quickRenderBtn.textContent = orig;
+            quickRenderBtn.style.background = '';
+          }, 1800);
+          return;
+        }
+
         const orig = quickRenderBtn.textContent;
         quickRenderBtn.textContent = '⚡ Jev Rendering...';
         const res = await quickRenderAi();
@@ -1422,7 +1437,8 @@ import { resolvePromptToCss } from './quick-render-jev';
           quickRenderBtn.textContent = '✓ Rendered (Jev)!';
           quickRenderBtn.style.background = '#16a34a';
         } else {
-          quickRenderBtn.textContent = '⚠ Render failed';
+          const reasonMsg = res?.reason === 'No element selected' ? 'Select element first' : (res?.reason ? `⚠ ${res.reason}` : '⚠ Render failed');
+          quickRenderBtn.textContent = reasonMsg.slice(0, 24);
           quickRenderBtn.style.background = '#dc2626';
         }
         setTimeout(() => {
@@ -1992,9 +2008,11 @@ import { resolvePromptToCss } from './quick-render-jev';
 
     // Notify host or agent bridge
     window.dispatchEvent(new CustomEvent('agent-bridge:handoff', { detail: payload }));
-    const host = (window as unknown as { __agentBridgeHost?: (msg: unknown) => void }).__agentBridgeHost;
+    const host = (window as unknown as { __agentBridgeHost?: (msg: unknown) => Promise<unknown> | void }).__agentBridgeHost;
     if (typeof host === 'function') {
-      host({ type: 'design_mode_handoff', payload });
+      try {
+        await host({ type: 'design_mode_handoff', payload });
+      } catch {}
     }
 
     const text = getFormattedPrompt(promptText);
@@ -2046,31 +2064,43 @@ import { resolvePromptToCss } from './quick-render-jev';
     if (!prompt) {
       return { success: false, reason: 'No prompt specified' };
     }
-    const sel = selections[0];
-    if (!sel) {
+    if (selections.length === 0) {
       return { success: false, reason: 'No element selected' };
     }
-    const result = await resolvePromptToCss(prompt, {
-      selector: sel.selector,
-      tagName: sel.element.localName,
-      textContent: sel.element.textContent?.slice(0, 100),
-      currentStyles: sel.originalStyles,
-    });
-    if (result.css) {
-      applyLivePatch(result.css);
-      Object.entries(result.declarations).forEach(([prop, val]) => {
-        const editId = `0::${prop}`;
-        edits.set(editId, {
-          id: editId,
-          kind: 'style',
-          property: prop,
-          original_value: sel.originalStyles[prop] || '',
-          value: val,
-        });
+
+    const allDeclarations: Record<string, string> = {};
+    const rules: string[] = [];
+
+    for (let idx = 0; idx < selections.length; idx++) {
+      const sel = selections[idx];
+      const result = await resolvePromptToCss(prompt, {
+        selector: sel.selector,
+        tagName: sel.element.localName,
+        textContent: sel.element.textContent?.slice(0, 100),
+        currentStyles: sel.originalStyles,
       });
+      if (result.css) {
+        rules.push(result.css);
+        Object.entries(result.declarations).forEach(([prop, val]) => {
+          allDeclarations[prop] = val;
+          const editId = `${idx}::${prop}`;
+          edits.set(editId, {
+            id: editId,
+            kind: 'style',
+            property: prop,
+            original_value: sel.originalStyles[prop] || '',
+            value: val,
+          });
+        });
+      }
+    }
+
+    if (rules.length > 0) {
+      const combinedCss = rules.join('\n\n');
+      applyLivePatch(combinedCss);
       revision += 1;
       renderOverlay();
-      return { success: true, css: result.css, declarations: result.declarations };
+      return { success: true, css: combinedCss, declarations: allDeclarations };
     }
     return { success: false, reason: 'CSS synthesis produced no output' };
   };
