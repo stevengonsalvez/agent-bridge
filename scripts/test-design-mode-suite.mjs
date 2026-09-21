@@ -207,7 +207,19 @@ async function runTestSuite() {
       };
     });
     assert.equal(stylesAfterAi.borderRadius, '20px', 'Border radius should be 20px');
-    logStep('1.9', 'AI Quick Render DOM injection', true, `bg: ${stylesAfterAi.backgroundColor}, radius: ${stylesAfterAi.borderRadius}`);
+
+    // Test natural language prompt ("make it rounded")
+    const nlRenderResult = await mobilePage.evaluate(async () => {
+      const host = document.querySelector('[data-agent-bridge-design-overlay]');
+      const input = host.shadowRoot.querySelector('[data-agent-prompt]');
+      input.value = 'make it rounded';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return await window.__agentBridgeDesignMode.quickRenderAi();
+    });
+    assert.equal(nlRenderResult.success, true, 'AI Quick Render with natural language prompt should succeed');
+    assert(nlRenderResult.css.includes('border-radius: 12px'), 'Natural language rounded should inject 12px border radius');
+
+    logStep('1.9', 'AI Quick Render DOM injection', true, `bg: ${stylesAfterAi.backgroundColor}, radius: ${stylesAfterAi.borderRadius}, nl: 12px`);
 
     // Test Manual Quick Render (Tweaker Inspector)
     await mobilePage.evaluate(() => {
