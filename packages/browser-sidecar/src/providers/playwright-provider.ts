@@ -790,7 +790,7 @@ function resolveBrowserChannel(requestedChannel?: string): string | undefined {
     return 'chrome';
   }
   try {
-    chromium.executablePath({ channel: 'chrome' });
+    (chromium as any).executablePath({ channel: 'chrome' });
     return 'chrome';
   } catch {
     return undefined;
