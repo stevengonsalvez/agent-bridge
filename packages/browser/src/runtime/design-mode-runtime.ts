@@ -81,6 +81,7 @@ import { resolvePromptToCss } from './quick-render-jev';
   let activeTool: Tool = 'select';
   let showTweaker = false;
   let showBatch = false;
+  let activeInfo: 'ai' | 'manual' | null = null;
   let currentPromptText = '';
 
   let overlayHost: HTMLDivElement | null = null;
@@ -429,6 +430,181 @@ import { resolvePromptToCss } from './quick-render-jev';
           background: #2563eb; color: #fff;
         }
         .btn-quick-render:hover { background: #1d4ed8; }
+
+        /* Quick Render AI & Manual item wraps and buttons */
+        .render-item-wrap {
+          display: inline-flex;
+          align-items: center;
+          gap: 2px;
+          background: rgba(255, 255, 255, 0.07);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 9999px;
+          padding: 1px 3px 1px 1px;
+        }
+        .btn-quick-render-ai {
+          background: linear-gradient(135deg, #7c3aed, #2563eb);
+          color: #fff;
+          height: 26px;
+          padding: 0 9px;
+          border-radius: 9999px;
+          font-size: 11px;
+          font-weight: 600;
+          border: none;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          transition: all 0.15s ease;
+        }
+        .btn-quick-render-ai:hover {
+          background: linear-gradient(135deg, #6d28d9, #1d4ed8);
+          box-shadow: 0 0 10px rgba(124, 58, 237, 0.5);
+        }
+        .btn-quick-render-manual {
+          background: rgba(255, 255, 255, 0.12);
+          color: #f4f4f5;
+          height: 26px;
+          padding: 0 9px;
+          border-radius: 9999px;
+          font-size: 11px;
+          font-weight: 600;
+          border: none;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          transition: all 0.15s ease;
+        }
+        .btn-quick-render-manual:hover {
+          background: rgba(255, 255, 255, 0.22);
+          color: #fff;
+        }
+        .help-question-btn {
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.14);
+          color: rgba(255, 255, 255, 0.85);
+          font-size: 11px;
+          font-weight: 700;
+          border: none;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          outline: none;
+          transition: all 0.15s ease;
+          padding: 0;
+        }
+        .help-question-btn:hover {
+          background: #3b82f6;
+          color: #ffffff;
+          transform: scale(1.1);
+        }
+        .help-question-btn.active {
+          background: #3b82f6;
+          color: #ffffff;
+        }
+
+        /* Info popover for explanations */
+        .info-popover {
+          position: fixed;
+          bottom: 74px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 400px;
+          max-height: 480px;
+          overflow-y: auto;
+          background: #18181b;
+          color: #f4f4f5;
+          border: 1px solid #27272a;
+          border-radius: 14px;
+          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08);
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          padding: 14px 16px;
+          pointer-events: auto;
+          z-index: 110;
+        }
+        .info-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          border-bottom: 1px solid #27272a;
+          padding-bottom: 8px;
+        }
+        .info-title-wrap {
+          display: flex;
+          align-items: center;
+          gap: 7px;
+        }
+        .info-icon { font-size: 14px; }
+        .info-title { font-size: 13px; font-weight: 700; color: #fafafa; }
+        .info-badge {
+          font-size: 10px;
+          font-weight: 600;
+          padding: 2px 7px;
+          border-radius: 9999px;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+        }
+        .info-badge-ai {
+          background: rgba(124, 58, 237, 0.2);
+          color: #c4b5fd;
+          border: 1px solid rgba(124, 58, 237, 0.4);
+        }
+        .info-badge-manual {
+          background: rgba(2, 132, 199, 0.2);
+          color: #7dd3fc;
+          border: 1px solid rgba(2, 132, 199, 0.4);
+        }
+        .info-desc {
+          font-size: 11.5px;
+          color: #d4d4d8;
+          line-height: 1.45;
+          margin: 0;
+        }
+        .info-steps {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .info-step {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          background: #27272a;
+          border-radius: 8px;
+          padding: 8px 10px;
+          font-size: 11px;
+        }
+        .info-step-num {
+          flex-shrink: 0;
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          background: #3f3f46;
+          color: #fff;
+          font-size: 10px;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .info-step-content {
+          color: #d4d4d8;
+          line-height: 1.35;
+        }
+        .info-step-content strong { color: #fafafa; }
+        .info-step-content code {
+          background: rgba(0, 0, 0, 0.35);
+          padding: 1px 5px;
+          border-radius: 3px;
+          font-size: 10px;
+          color: #93c5fd;
+          font-family: ui-monospace, monospace;
+        }
         .btn-tweak {
           background: ${showTweaker ? '#3b82f6' : 'rgba(255, 255, 255, 0.08)'};
           color: ${showTweaker ? '#fff' : 'rgba(255, 255, 255, 0.8)'};
@@ -606,6 +782,13 @@ import { resolvePromptToCss } from './quick-render-jev';
               <div class="diff-preview">${diff}</div>
             </div>
           ` : ''}
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px; border-top:1px solid #27272a; padding-top:8px;">
+            <div class="render-item-wrap">
+              <button class="btn-action btn-quick-render-manual" data-action="quick-render-manual" title="Quick Render Manual Tweaks">⚡ Manual Render</button>
+              <button class="help-question-btn ${activeInfo === 'manual' ? 'active' : ''}" data-action="toggle-info-manual" title="How Quick Render (Manual) works">?</button>
+            </div>
+            ${diff ? `<span style="font-size:10px; color:#a1a1aa;">${edits.size} tweak${edits.size === 1 ? '' : 's'}</span>` : ''}
+          </div>
         </div>
       ` : ''}
 
@@ -675,6 +858,78 @@ import { resolvePromptToCss } from './quick-render-jev';
         </div>
       ` : ''}
 
+      ${activeInfo === 'ai' ? `
+        <div class="info-popover">
+          <div class="info-header">
+            <div class="info-title-wrap">
+              <span class="info-icon">⚡</span>
+              <span class="info-title">Quick Render (AI)</span>
+              <span class="info-badge info-badge-ai">TypeSafe AI &bull; Jev</span>
+            </div>
+            <button class="btn-icon" data-action="close-info" title="Close info" style="width:20px;height:20px;">&times;</button>
+          </div>
+          <div class="info-desc">
+            Translates natural language UI instructions directly into live CSS overrides using TypeSafe AI and Jev fast synthesis.
+          </div>
+          <div class="info-steps">
+            <div class="info-step">
+              <span class="info-step-num">1</span>
+              <div class="info-step-content">
+                <strong>Select &amp; Prompt:</strong> Click any element and type what you want in the prompt field (e.g. <em>"coral background, 20px rounded corners"</em>).
+              </div>
+            </div>
+            <div class="info-step">
+              <span class="info-step-num">2</span>
+              <div class="info-step-content">
+                <strong>Jev Fast Synthesis:</strong> TypeSafe AI sends the element context and prompt to Jev via Vercel AI Gateway for instant structured CSS generation.
+              </div>
+            </div>
+            <div class="info-step">
+              <span class="info-step-num">3</span>
+              <div class="info-step-content">
+                <strong>0ms DOM Injection:</strong> Injects a <code>&lt;style id="__agent_bridge_live_preview__"&gt;</code> tag directly into <code>document.head</code> with <code>!important</code> rules. Instant preview, zero server rebuilds.
+              </div>
+            </div>
+          </div>
+        </div>
+      ` : ''}
+
+      ${activeInfo === 'manual' ? `
+        <div class="info-popover">
+          <div class="info-header">
+            <div class="info-title-wrap">
+              <span class="info-icon">⚙</span>
+              <span class="info-title">Quick Render (Manual)</span>
+              <span class="info-badge info-badge-manual">Inspector</span>
+            </div>
+            <button class="btn-icon" data-action="close-info" title="Close info" style="width:20px;height:20px;">&times;</button>
+          </div>
+          <div class="info-desc">
+            Inspects selected elements and applies direct manual CSS property tweaks instantly.
+          </div>
+          <div class="info-steps">
+            <div class="info-step">
+              <span class="info-step-num">1</span>
+              <div class="info-step-content">
+                <strong>Select Element:</strong> Click any element on the page, then click <strong>⚙ Tweak</strong> to open the style inspector.
+              </div>
+            </div>
+            <div class="info-step">
+              <span class="info-step-num">2</span>
+              <div class="info-step-content">
+                <strong>Adjust Properties:</strong> Manually change padding, margin, font size, text color, background color, or border radius in the inspector inputs.
+              </div>
+            </div>
+            <div class="info-step">
+              <span class="info-step-num">3</span>
+              <div class="info-step-content">
+                <strong>Instant Apply:</strong> Click <strong>⚡ Manual</strong> to serialize all your tweaks into CSS and inject them into <code>document.head</code> with <code>!important</code> overrides.
+              </div>
+            </div>
+          </div>
+        </div>
+      ` : ''}
+
       <div class="floating-palette">
         <div class="mode-group">
           <button class="mode-btn ${activeTool === 'interact' ? 'active' : ''}" data-tool="interact" title="Interact / Browse (Escape to toggle) - Click inputs, type, navigate">
@@ -719,9 +974,19 @@ import { resolvePromptToCss } from './quick-render-jev';
           ➤ Send
         </button>
 
-        <button class="btn-action btn-quick-render" data-action="quick-render" title="Quick Render CSS Patch">
-          ⚡ Quick Render
-        </button>
+        <div class="render-item-wrap">
+          <button class="btn-action btn-quick-render btn-quick-render-ai" data-action="quick-render" data-action-ai="quick-render-ai" title="Quick Render (AI) with Jev">
+            ⚡ AI Render
+          </button>
+          <button class="help-question-btn ${activeInfo === 'ai' ? 'active' : ''}" data-action="toggle-info-ai" title="How Quick Render (AI) works with Jev">?</button>
+        </div>
+
+        <div class="render-item-wrap">
+          <button class="btn-action btn-quick-render-manual" data-action="quick-render-manual" title="Quick Render (Manual Tweaks)">
+            ⚡ Manual
+          </button>
+          <button class="help-question-btn ${activeInfo === 'manual' ? 'active' : ''}" data-action="toggle-info-manual" title="How Quick Render (Manual) works">?</button>
+        </div>
 
         ${selections.length > 0 ? `
           <button class="btn-action btn-tweak" data-action="toggle-tweaker" title="Tweak Styles">
@@ -993,15 +1258,47 @@ import { resolvePromptToCss } from './quick-render-jev';
       });
     }
 
-    // Quick render button
-    const quickRenderBtn = shadowRoot.querySelector<HTMLButtonElement>('[data-action="quick-render"]');
-    if (quickRenderBtn) {
-      quickRenderBtn.addEventListener('click', async () => {
+    // Info popover toggles
+    shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="toggle-info-ai"]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        activeInfo = activeInfo === 'ai' ? null : 'ai';
+        if (activeInfo) {
+          showTweaker = false;
+          showBatch = false;
+        }
+        renderOverlay();
+      });
+    });
+
+    shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="toggle-info-manual"]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        activeInfo = activeInfo === 'manual' ? null : 'manual';
+        if (activeInfo) {
+          showTweaker = false;
+          showBatch = false;
+        }
+        renderOverlay();
+      });
+    });
+
+    shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="close-info"]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        activeInfo = null;
+        renderOverlay();
+      });
+    });
+
+    // Quick render AI buttons
+    shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="quick-render"], [data-action="quick-render-ai"]').forEach((quickRenderBtn) => {
+      quickRenderBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
         const hasPrompt = !!currentPromptText.trim();
-        const hasEdits = edits.size > 0;
-        if (!hasPrompt && !hasEdits) {
+        if (!hasPrompt) {
           const orig = quickRenderBtn.textContent;
-          quickRenderBtn.textContent = 'No prompt or tweaks';
+          quickRenderBtn.textContent = 'Enter prompt first';
           quickRenderBtn.style.background = '#71717a';
           setTimeout(() => {
             quickRenderBtn.textContent = orig;
@@ -1011,25 +1308,62 @@ import { resolvePromptToCss } from './quick-render-jev';
         }
 
         const orig = quickRenderBtn.textContent;
-        if (hasPrompt) {
-          quickRenderBtn.textContent = '⚡ Jev Rendering...';
+        quickRenderBtn.textContent = '⚡ Jev Rendering...';
+        const res = await quickRenderAi();
+        if (res && res.success) {
+          quickRenderBtn.textContent = '✓ Rendered (Jev)!';
+          quickRenderBtn.style.background = '#16a34a';
+        } else {
+          quickRenderBtn.textContent = '⚠ Render failed';
+          quickRenderBtn.style.background = '#dc2626';
         }
-        await quickRender();
-        quickRenderBtn.textContent = hasPrompt ? '✓ Rendered (Jev)!' : '✓ Rendered!';
-        quickRenderBtn.style.background = '#16a34a';
         setTimeout(() => {
           quickRenderBtn.textContent = orig;
           quickRenderBtn.style.background = '';
         }, 1800);
       });
-    }
+    });
+
+    // Quick render Manual buttons
+    shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="quick-render-manual"]').forEach((manualBtn) => {
+      manualBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (edits.size === 0) {
+          const orig = manualBtn.textContent;
+          manualBtn.textContent = 'No tweaks yet';
+          manualBtn.style.background = '#71717a';
+          setTimeout(() => {
+            manualBtn.textContent = orig;
+            manualBtn.style.background = '';
+          }, 1500);
+          return;
+        }
+
+        const orig = manualBtn.textContent;
+        const res = quickRenderManual();
+        if (res && res.success) {
+          manualBtn.textContent = '✓ Tweaks Applied!';
+          manualBtn.style.background = '#16a34a';
+        } else {
+          manualBtn.textContent = '⚠ No tweaks';
+          manualBtn.style.background = '#dc2626';
+        }
+        setTimeout(() => {
+          manualBtn.textContent = orig;
+          manualBtn.style.background = '';
+        }, 1800);
+      });
+    });
 
     // Tweaker toggle
     const tweakerBtn = shadowRoot.querySelector<HTMLButtonElement>('[data-action="toggle-tweaker"]');
     if (tweakerBtn) {
       tweakerBtn.addEventListener('click', () => {
         showTweaker = !showTweaker;
-        if (showTweaker) showBatch = false;
+        if (showTweaker) {
+          showBatch = false;
+          activeInfo = null;
+        }
         renderOverlay();
       });
     }
@@ -1045,7 +1379,10 @@ import { resolvePromptToCss } from './quick-render-jev';
       batchBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         showBatch = !showBatch;
-        if (showBatch) showTweaker = false;
+        if (showBatch) {
+          showTweaker = false;
+          activeInfo = null;
+        }
         renderOverlay();
       });
     }
@@ -1321,6 +1658,7 @@ import { resolvePromptToCss } from './quick-render-jev';
       revision,
       enabled,
       active_tool: activeTool,
+      active_info: activeInfo,
       selection: selections.length ? buildSelectionSnapshot(selections[selections.length - 1]) : null,
       selections: selections.map((s) => buildSelectionSnapshot(s)),
       marks: marks.map((m) => ({ ...m })),
@@ -1494,62 +1832,41 @@ import { resolvePromptToCss } from './quick-render-jev';
     document.getElementById('__agent_bridge_live_preview__')?.remove();
   };
 
-  const quickRender = async (customCssOrPrompt?: string) => {
-    if (typeof customCssOrPrompt === 'string') {
-      const trimmed = customCssOrPrompt.trim();
-      if (trimmed.includes('{') && trimmed.includes('}')) {
-        applyLivePatch(trimmed);
-        return;
-      }
-      const sel = selections[0];
-      if (sel) {
-        const result = await resolvePromptToCss(trimmed, {
-          selector: sel.selector,
-          tagName: sel.element.localName,
-          textContent: sel.element.textContent?.slice(0, 100),
-          currentStyles: sel.originalStyles,
-        });
-        if (result.css) {
-          applyLivePatch(result.css);
-          Object.entries(result.declarations).forEach(([prop, val]) => {
-            const editId = `0::${prop}`;
-            edits.set(editId, {
-              id: editId,
-              kind: 'style',
-              property: prop,
-              original_value: sel.originalStyles[prop] || '',
-              value: val,
-            });
-          });
-          return result;
-        }
-      }
+  const quickRenderAi = async (promptOverride?: string) => {
+    const prompt = typeof promptOverride === 'string' ? promptOverride.trim() : currentPromptText.trim();
+    if (!prompt) {
+      return { success: false, reason: 'No prompt specified' };
     }
-
-    if (currentPromptText.trim() && selections[0]) {
-      const sel = selections[0];
-      const result = await resolvePromptToCss(currentPromptText.trim(), {
-        selector: sel.selector,
-        tagName: sel.element.localName,
-        textContent: sel.element.textContent?.slice(0, 100),
-        currentStyles: sel.originalStyles,
+    const sel = selections[0];
+    if (!sel) {
+      return { success: false, reason: 'No element selected' };
+    }
+    const result = await resolvePromptToCss(prompt, {
+      selector: sel.selector,
+      tagName: sel.element.localName,
+      textContent: sel.element.textContent?.slice(0, 100),
+      currentStyles: sel.originalStyles,
+    });
+    if (result.css) {
+      applyLivePatch(result.css);
+      Object.entries(result.declarations).forEach(([prop, val]) => {
+        const editId = `0::${prop}`;
+        edits.set(editId, {
+          id: editId,
+          kind: 'style',
+          property: prop,
+          original_value: sel.originalStyles[prop] || '',
+          value: val,
+        });
       });
-      if (result.css) {
-        applyLivePatch(result.css);
-        Object.entries(result.declarations).forEach(([prop, val]) => {
-          const editId = `0::${prop}`;
-          edits.set(editId, {
-            id: editId,
-            kind: 'style',
-            property: prop,
-            original_value: sel.originalStyles[prop] || '',
-            value: val,
-          });
-        });
-        return result;
-      }
+      revision += 1;
+      renderOverlay();
+      return { success: true, css: result.css, declarations: result.declarations };
     }
+    return { success: false, reason: 'CSS synthesis produced no output' };
+  };
 
+  const quickRenderManual = () => {
     const grouped = new Map<string, StoredEdit[]>();
     for (const edit of edits.values()) {
       if (edit.kind !== 'style') continue;
@@ -1566,8 +1883,28 @@ import { resolvePromptToCss } from './quick-render-jev';
       rules.push(`${sel.selector} {\n  ${declarations}\n}`);
     }
     if (rules.length > 0) {
-      applyLivePatch(rules.join('\n\n'));
+      const css = rules.join('\n\n');
+      applyLivePatch(css);
+      return { success: true, css, editCount: edits.size };
     }
+    return { success: false, reason: 'No manual edits found' };
+  };
+
+  const quickRender = async (customCssOrPrompt?: string) => {
+    if (typeof customCssOrPrompt === 'string') {
+      const trimmed = customCssOrPrompt.trim();
+      if (trimmed.includes('{') && trimmed.includes('}')) {
+        applyLivePatch(trimmed);
+        return { success: true, css: trimmed };
+      }
+      return await quickRenderAi(trimmed);
+    }
+
+    if (currentPromptText.trim() && selections[0]) {
+      return await quickRenderAi();
+    }
+
+    return quickRenderManual();
   };
 
   const runtimeApi = {
@@ -1597,6 +1934,13 @@ import { resolvePromptToCss } from './quick-render-jev';
     getFormattedPrompt,
     copyHandoffToClipboard,
     quickRender,
+    quickRenderAi,
+    quickRenderManual,
+    toggleInfo: (mode: 'ai' | 'manual' | null) => {
+      activeInfo = mode;
+      renderOverlay();
+      return getSnapshot();
+    },
     setTool: (tool: Tool) => {
       activeTool = tool;
       if (activeTool !== 'select') {
