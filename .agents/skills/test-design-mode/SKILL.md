@@ -70,6 +70,10 @@ This skill provides an automated, reproducible end-to-end test suite and subagen
 | **Batch Workflow** | Batch Review & Send | Inspects batch summary, triggers `➤ Send`, verifies submission transition state. |
 | **Visual Annotations** | Canvas Drawing | Draws pen lines, region boxes, and arrows; verifies snapshot marks count. |
 | **Visual Artifacts** | Screenshots | Captures full page screenshots for mobile and desktop surfaces. |
+| **React Reflection** | Fiber & Prop Inspection | Extracts component hierarchy (`App`, `Home`, etc.) and prop keys via `__reactFiber$` and `__reactProps$`. |
+| **Per-Element Crops** | Bounding Box Screenshots | Captures tight cropped screenshots per element in batch (`surface-...-crop-...-screenshot.png`). |
+| **CMUX Line 1 Parity** | Multimodal Prompt Format | Emits line 1 `<crop0> <text> <crop1> <crop2>`, `Page: <url>`, and `Details: <context.json>`. |
+| **Structured Handoff** | Tokenized Prompt Array | Populates `prompt: [{ selection: 0 }, { text: ... }, ...]` and `context.json` schema matching cmux. |
 
 ---
 
@@ -104,7 +108,7 @@ When the orchestrator agent tests Design Mode, spawn a dedicated tester subagent
 {
   "typeName": "self",
   "role": "Browser Tester Subagent",
-  "Prompt": "You are the Tester Subagent validating Agent Bridge Design Mode across mobile (developer mode / phone size) and desktop viewports.\n\nInstructions:\n1. Execute the comprehensive test suite:\n   `node scripts/test-design-mode-suite.mjs`\n2. Verify that all 17 test steps across Phase 1 (Mobile Surface) and Phase 2 (Desktop Surface) pass with code 0.\n3. Verify that the two verification screenshots are generated:\n   - /tmp/test-design-mode-phone.png\n   - /tmp/test-design-mode-desktop.png\n4. Report back with the test results summary, toolbar scroll metrics, computed styles before vs after AI/manual render, and screenshot paths."
+  "Prompt": "You are the Tester Subagent validating Agent Bridge Design Mode across mobile (developer mode / phone size), desktop viewports, and CMUX parity.\n\nInstructions:\n1. Execute the comprehensive test suite:\n   `node scripts/test-design-mode-suite.mjs`\n2. Verify that all 23 test steps across Phase 1 (Mobile Surface), Phase 2 (Desktop Surface), and Phase 3 (CMUX Parity Multi-Item Batch, Crops & Fiber) pass with code 0.\n3. Verify that the two verification screenshots are generated:\n   - /tmp/test-design-mode-phone.png\n   - /tmp/test-design-mode-desktop.png\n4. Report back with the test results summary, toolbar scroll metrics, computed styles before vs after AI/manual render, React Fiber components detected, cropped element screenshots, and screenshot paths."
 }
 ```
 
@@ -134,4 +138,24 @@ Key assertions:
 4. **Dynamic Resizing Accuracy**:
    ```javascript
    assert(boxAlignment.diffX <= 2 && boxAlignment.diffY <= 2);
+   ```
+5. **React Fiber & Prop Reflection**:
+   ```javascript
+   assert.ok(Array.isArray(sel0.react_components));
+   assert.ok(sel0.react_components.includes('App') || sel0.react_components.includes('Routes'));
+   assert.ok(sel1.react_components.includes('Home'));
+   ```
+6. **Line 1 Multimodal Prompt Format**:
+   ```javascript
+   const expectedLine1 = `${cropPaths[0]} ${requestedText} ${cropPaths[1]} ${cropPaths[2]}`;
+   assert.equal(promptLines[0], expectedLine1);
+   assert.equal(promptLines[2], `Page: ${cmuxPage.url()}`);
+   assert.equal(promptLines[3], `Details: ${contextJsonPath}`);
+   ```
+7. **Structured Prompt Tokens**:
+   ```javascript
+   assert.deepEqual(tokens[0], { selection: 0 });
+   assert.deepEqual(tokens[1], { text: requestedText });
+   assert.deepEqual(tokens[2], { selection: 1 });
+   assert.deepEqual(tokens[3], { selection: 2 });
    ```

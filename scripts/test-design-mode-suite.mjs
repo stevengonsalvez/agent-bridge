@@ -391,6 +391,131 @@ async function runTestSuite() {
 
     await desktopContext.close();
 
+    // =========================================================================
+    // Phase 3: CMUX Parity Multi-Item Batch, Crop Screenshots & Fiber Reflection
+    // =========================================================================
+    console.log('\n🎯 Phase 3: CMUX Parity Multi-Item Batch, Crop Screenshots & Fiber Reflection');
+    console.log('----------------------------------------------------------------------------');
+
+    const cmuxContext = await browser.newContext({
+      viewport: { width: 1280, height: 850 },
+      permissions: ['clipboard-read', 'clipboard-write'],
+    });
+
+    await cmuxContext.addInitScript(`
+      window.localStorage.setItem('debug-bridge-demo-store', JSON.stringify({
+        auth: { isLoggedIn: true, email: 'stevie@example.com' },
+        cart: { items: [] }
+      }));
+    `);
+
+    const cmuxPage = await cmuxContext.newPage();
+    await cmuxPage.goto(TARGET_URL, { waitUntil: 'networkidle' });
+    await cmuxPage.evaluate(runtimeScript);
+    await cmuxPage.evaluate('window.__agentBridgeDesignMode.enable()');
+
+    // 3.1: Multi-item selection batch (select 3 elements)
+    const el1 = cmuxPage.locator('button[data-testid="logout-btn"]');
+    const el2 = cmuxPage.locator('div[data-testid="home-page"] h1');
+    const el3 = cmuxPage.locator('a[data-testid="nav-products"]');
+
+    await el1.click();
+    await el2.click();
+    await el3.click();
+
+    const batchSnap = await cmuxPage.evaluate('window.__agentBridgeDesignMode.getSnapshot()');
+    assert.equal(batchSnap.selections.length, 3, 'Batch must contain 3 selected elements');
+    logStep('3.1', 'Multi-item batch selection', true, `Selected ${batchSnap.selections.length} elements (@e1, @e2, @e3)`);
+
+    // 3.2: React Fiber & Prop Reflection on selected elements
+    const sel0 = batchSnap.selections[0];
+    const sel1 = batchSnap.selections[1];
+    assert.ok(Array.isArray(sel0.react_components), 'Selection 0 must have react_components array');
+    assert.ok(Array.isArray(sel0.react_prop_keys), 'Selection 0 must have react_prop_keys array');
+    assert.ok(sel0.react_components.includes('App') || sel0.react_components.includes('Routes'), 'Selection 0 react_components must include App or Routes');
+    assert.ok(sel0.react_prop_keys.includes('onClick') || sel0.react_prop_keys.includes('data-testid'), 'Selection 0 react_prop_keys must include onClick or data-testid');
+    assert.ok(sel1.react_components.includes('Home'), 'Selection 1 react_components must include Home component');
+    assert.ok(sel1.react_prop_keys.includes('data-component') || sel1.react_prop_keys.includes('data-testid'), 'Selection 1 react_prop_keys must include data-component or data-testid');
+    logStep('3.2', 'React Fiber & Prop Reflection', true, `sel0: [${sel0.react_components.slice(0, 3).join(', ')}], sel1: [${sel1.react_components.slice(0, 3).join(', ')}]`);
+
+    // 3.3: Capture per-element cropped screenshots & full page screenshot
+    const cmuxDir = path.join('/tmp', 'cmux-parity-test');
+    fs.mkdirSync(cmuxDir, { recursive: true });
+    const timestamp = Date.now();
+
+    const pageScreenshotPath = path.join(cmuxDir, `surface-test-${timestamp}-screenshot.png`);
+    await cmuxPage.screenshot({ path: pageScreenshotPath });
+
+    const cropPaths = [];
+    for (let i = 0; i < batchSnap.selections.length; i++) {
+      const s = batchSnap.selections[i];
+      const cropPath = path.join(cmuxDir, `surface-test-${timestamp}-crop-${i}-screenshot.png`);
+      const loc = cmuxPage.locator(s.selector).first();
+      await loc.screenshot({ path: cropPath });
+      assert.ok(fs.existsSync(cropPath) && fs.statSync(cropPath).size > 0, `Cropped screenshot ${i} must exist and have content`);
+      cropPaths.push(cropPath);
+    }
+    logStep('3.3', 'Per-element cropped screenshots generated', true, `Captured 3 crops: ${cropPaths.map((p) => path.basename(p)).join(', ')}`);
+
+    // 3.4: Context.json parity generation
+    const contextJsonPath = path.join(cmuxDir, `surface-test-${timestamp}-context.json`);
+    const requestedText = 'change login and navigation buttons';
+
+    await cmuxPage.evaluate(({ pageScreenshotPath, cropPaths, contextJsonPath }) => {
+      window.__agentBridgeDesignMode.setArtifactPaths({
+        screenshot_path: pageScreenshotPath,
+        page_screenshot_path: pageScreenshotPath,
+        element_screenshot_paths: cropPaths,
+        context_json_path: contextJsonPath,
+      });
+    }, { pageScreenshotPath, cropPaths, contextJsonPath });
+
+    const updatedSnap = await cmuxPage.evaluate('window.__agentBridgeDesignMode.getSnapshot()');
+    const tokens = await cmuxPage.evaluate((txt) => window.__agentBridgeDesignMode.getPromptTokens(txt), requestedText);
+    assert.equal(tokens.length, 4, 'Tokens must have selection 0, text, selection 1, selection 2');
+    assert.deepEqual(tokens[0], { selection: 0 });
+    assert.deepEqual(tokens[1], { text: requestedText });
+    assert.deepEqual(tokens[2], { selection: 1 });
+    assert.deepEqual(tokens[3], { selection: 2 });
+
+    const contextData = {
+      css_diff: updatedSnap.css_diff || '',
+      edits: updatedSnap.edits || [],
+      page_screenshot_path: pageScreenshotPath,
+      page_url: cmuxPage.url(),
+      prompt: tokens,
+      requested_change: requestedText,
+      revision: updatedSnap.revision,
+      selections: updatedSnap.selections,
+      marks: updatedSnap.marks || [],
+    };
+    fs.writeFileSync(contextJsonPath, JSON.stringify(contextData, null, 2));
+    assert.ok(fs.existsSync(contextJsonPath), 'context.json must exist');
+    logStep('3.4', 'Structured prompt tokens and context.json parity', true, 'context.json contains 4 tokens and 3 selections');
+
+    // 3.5: Line 1 Multimodal Prompt Formatting
+    const formattedPrompt = await cmuxPage.evaluate((txt) => window.__agentBridgeDesignMode.getFormattedPrompt(txt), requestedText);
+    const promptLines = formattedPrompt.split('\n');
+
+    const expectedLine1 = `${cropPaths[0]} ${requestedText} ${cropPaths[1]} ${cropPaths[2]}`;
+    assert.equal(promptLines[0], expectedLine1, 'Line 1 must format all cropped image paths and prompt text');
+    assert.equal(promptLines[1], '', 'Line 2 must be blank');
+    assert.equal(promptLines[2], `Page: ${cmuxPage.url()}`, 'Line 3 must start with Page:');
+    assert.equal(promptLines[3], `Details: ${contextJsonPath}`, 'Line 4 must start with Details:');
+    logStep('3.5', 'Line 1 multimodal clipboard prompt format verified', true, 'Line 1: <crop0> text <crop1> <crop2>');
+
+    // 3.6: Clipboard copy and handoff payload
+    const handoffPayload = await cmuxPage.evaluate((txt) => window.__agentBridgeDesignMode.getHandoff(txt), requestedText);
+    assert.deepEqual(handoffPayload.prompt, tokens, 'Handoff prompt must match tokens array');
+    assert.equal(handoffPayload.page_screenshot_path, pageScreenshotPath, 'Handoff page screenshot path must match');
+    assert.equal(handoffPayload.selections.length, 3, 'Handoff selections length must be 3');
+    assert.equal(handoffPayload.selections[0].screenshot_path, cropPaths[0], 'Selection 0 must have crop 0 path');
+    assert.equal(handoffPayload.selections[1].screenshot_path, cropPaths[1], 'Selection 1 must have crop 1 path');
+    assert.equal(handoffPayload.selections[2].screenshot_path, cropPaths[2], 'Selection 2 must have crop 2 path');
+    logStep('3.6', 'Handoff payload parity verified', true, 'Handoff matches cmux schema with element screenshot paths');
+
+    await cmuxContext.close();
+
     console.log('\n===============================================================');
     console.log('🎉 All Design Mode Tests Passed Successfully!');
     console.log(`📱 Phone Screenshot: ${SCREENSHOT_PHONE}`);

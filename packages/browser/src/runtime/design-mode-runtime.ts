@@ -53,6 +53,7 @@ import { resolvePromptToCss } from './quick-render-jev';
     xpath: string;
     originalText: string;
     originalStyles: Record<string, string>;
+    screenshot_path?: string;
   };
 
   type StoredPoint = {
@@ -71,6 +72,8 @@ import { resolvePromptToCss } from './quick-render-jev';
 
   type ArtifactPaths = {
     screenshot_path?: string;
+    page_screenshot_path?: string;
+    element_screenshot_paths?: string[];
     live_context_path?: string;
     context_json_path?: string;
   };
@@ -1758,24 +1761,111 @@ import { resolvePromptToCss } from './quick-render-jev';
     renderOverlay();
   };
 
+  const extractReactFiberInfo = (element: HTMLElement): { components: string[]; propKeys: string[] } => {
+    const components: string[] = [];
+    const propKeys: string[] = [];
+
+    try {
+      const keys = Object.keys(element);
+      const fiberKey = keys.find(
+        (key) => key.startsWith('__reactFiber$') || key.startsWith('__reactInternalInstance$')
+      );
+      const propsKey = keys.find((key) => key.startsWith('__reactProps$'));
+
+      if (propsKey && (element as unknown as Record<string, unknown>)[propsKey]) {
+        const props = (element as unknown as Record<string, unknown>)[propsKey];
+        if (typeof props === 'object' && props !== null) {
+          for (const k of Object.keys(props)) {
+            if (k !== 'children' && !propKeys.includes(k)) {
+              propKeys.push(k);
+            }
+          }
+        }
+      }
+
+      if (fiberKey) {
+        let curr = (element as unknown as Record<string, unknown>)[fiberKey] as Record<string, unknown> | null;
+        while (curr) {
+          if (curr.type) {
+            let name: string | undefined;
+            if (typeof curr.type === 'function') {
+              name = (curr.type as { displayName?: string; name?: string }).displayName || (curr.type as { name?: string }).name;
+            } else if (typeof curr.type === 'object' && curr.type !== null) {
+              const obj = curr.type as { displayName?: string; name?: string; render?: { displayName?: string; name?: string } };
+              name = obj.displayName || obj.name;
+              if (!name && obj.render) {
+                name = obj.render.displayName || obj.render.name;
+              }
+            }
+            if (name && !components.includes(name) && name !== 'Anonymous') {
+              components.push(name);
+            }
+          }
+
+          if (propKeys.length === 0 && curr.memoizedProps && typeof curr.memoizedProps === 'object') {
+            for (const k of Object.keys(curr.memoizedProps)) {
+              if (k !== 'children' && !propKeys.includes(k)) {
+                propKeys.push(k);
+              }
+            }
+          }
+
+          curr = (curr.return as Record<string, unknown> | null) || null;
+        }
+      }
+    } catch {
+      // Ignore inspection errors
+    }
+
+    return { components, propKeys };
+  };
+
+  const getPromptTokens = (requestedChange?: string): Array<{ selection?: number; text?: string }> => {
+    const text = (requestedChange || currentPromptText).trim() || 'Design-mode context for the selected page elements.';
+    const tokens: Array<{ selection?: number; text?: string }> = [];
+    if (selections.length === 0) {
+      tokens.push({ text });
+    } else if (selections.length === 1) {
+      tokens.push({ selection: 0 });
+      tokens.push({ text });
+    } else {
+      tokens.push({ selection: 0 });
+      tokens.push({ text });
+      for (let i = 1; i < selections.length; i++) {
+        tokens.push({ selection: i });
+      }
+    }
+    return tokens;
+  };
+
   const getSnapshot = () => {
+    const pageScreenshot = currentArtifacts.page_screenshot_path || currentArtifacts.screenshot_path;
+    const elementScreenshots = currentArtifacts.element_screenshot_paths || selections.map((s) => s.screenshot_path).filter(Boolean) as string[];
     return {
       revision,
       enabled,
       active_tool: activeTool,
       active_info: activeInfo,
-      selection: selections.length ? buildSelectionSnapshot(selections[selections.length - 1]) : null,
-      selections: selections.map((s) => buildSelectionSnapshot(s)),
+      selection: selections.length ? buildSelectionSnapshot(selections[selections.length - 1], selections.length - 1) : null,
+      selections: selections.map((s, idx) => buildSelectionSnapshot(s, idx)),
       marks: marks.map((m) => ({ ...m })),
       edits: Array.from(edits.values()),
       css_diff: getComputedCssDiff(),
       prompt_text: currentPromptText,
-      artifacts: currentArtifacts,
+      artifacts: {
+        screenshot_path: currentArtifacts.screenshot_path,
+        page_screenshot_path: pageScreenshot,
+        element_screenshot_paths: elementScreenshots,
+        live_context_path: currentArtifacts.live_context_path,
+        context_json_path: currentArtifacts.context_json_path,
+      },
     };
   };
 
-  const buildSelectionSnapshot = (s: StoredSelection) => {
+  const buildSelectionSnapshot = (s: StoredSelection, index?: number) => {
     const rect = s.element.getBoundingClientRect();
+    const fiberInfo = extractReactFiberInfo(s.element);
+    const screenshotPath = s.screenshot_path || (index !== undefined && currentArtifacts.element_screenshot_paths ? currentArtifacts.element_screenshot_paths[index] : undefined);
     return {
       selector: s.selector,
       selectors: s.selectors,
@@ -1798,22 +1888,34 @@ import { resolvePromptToCss } from './quick-render-jev';
       },
       computed_styles: captureStyles(s.element),
       color: s.color,
+      screenshot_path: screenshotPath,
+      react_components: fiberInfo.components,
+      react_prop_keys: fiberInfo.propKeys,
     };
   };
 
   const getFormattedPrompt = (requestedChange?: string): string => {
     const userPrompt = (requestedChange || currentPromptText).trim() || 'Design-mode context for the selected page elements.';
 
-    // If artifact file paths are available, format prompt for agent handoff:
-    if (currentArtifacts.screenshot_path && currentArtifacts.live_context_path && currentArtifacts.context_json_path) {
-      return [
-        userPrompt,
+    // If context_json_path is present (agent handoff mode matching cmux):
+    if (currentArtifacts.context_json_path) {
+      const tokens = getPromptTokens(userPrompt);
+      const line1Tokens = tokens.map((t) => {
+        if (t.selection !== undefined) {
+          const sel = selections[t.selection];
+          const elPath = sel?.screenshot_path || (currentArtifacts.element_screenshot_paths && currentArtifacts.element_screenshot_paths[t.selection]);
+          return elPath || `@e${t.selection + 1}`;
+        }
+        return t.text || '';
+      }).filter(Boolean);
+
+      const lines = [
+        line1Tokens.join(' '),
         '',
         `Page: ${window.location.href}`,
-        currentArtifacts.screenshot_path,
-        currentArtifacts.live_context_path,
         `Details: ${currentArtifacts.context_json_path}`,
-      ].join('\n');
+      ];
+      return lines.join('\n');
     }
 
     // Fallback if artifacts are not yet written:
@@ -1867,6 +1969,7 @@ import { resolvePromptToCss } from './quick-render-jev';
   const getHandoffPayload = (requestedChange = 'Design-mode context for the selected page elements.') => {
     const snap = getSnapshot();
     const prompt = getFormattedPrompt(requestedChange);
+    const tokens = getPromptTokens(requestedChange);
     return {
       page_url: window.location.href,
       requested_change: (requestedChange || currentPromptText).trim() || 'Design-mode context for the selected page elements.',
@@ -1875,10 +1978,11 @@ import { resolvePromptToCss } from './quick-render-jev';
       edits: snap.edits,
       selections: snap.selections,
       marks: snap.marks,
-      page_screenshot_path: currentArtifacts.screenshot_path,
+      page_screenshot_path: currentArtifacts.page_screenshot_path || currentArtifacts.screenshot_path,
       live_context_path: currentArtifacts.live_context_path,
       context_json_path: currentArtifacts.context_json_path,
-      prompt,
+      prompt: tokens,
+      formatted_prompt: prompt,
     };
   };
 
@@ -2076,8 +2180,16 @@ import { resolvePromptToCss } from './quick-render-jev';
       return getSnapshot();
     },
     setCaptureHidden,
+    getPromptTokens,
     setArtifactPaths: (paths: ArtifactPaths) => {
       currentArtifacts = { ...currentArtifacts, ...paths };
+      if (paths.element_screenshot_paths && Array.isArray(paths.element_screenshot_paths)) {
+        paths.element_screenshot_paths.forEach((p, idx) => {
+          if (selections[idx]) {
+            selections[idx].screenshot_path = p;
+          }
+        });
+      }
       return getSnapshot();
     },
     clearSelections: () => {

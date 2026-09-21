@@ -450,6 +450,8 @@ export class PlaywrightProvider {
             prompt: artifacts.prompt,
             artifacts: {
               screenshot_path: artifacts.cleanPath,
+              page_screenshot_path: artifacts.cleanPath,
+              element_screenshot_paths: artifacts.elementPaths,
               live_context_path: artifacts.liveContextPath,
               context_json_path: artifacts.contextPath,
             },
@@ -664,6 +666,7 @@ export class PlaywrightProvider {
     cleanPath: string;
     liveContextPath: string;
     contextPath: string;
+    elementPaths: string[];
     prompt: string;
     snapshot: Record<string, unknown>;
   }> {
@@ -685,7 +688,46 @@ export class PlaywrightProvider {
     const cleanPath = path.join(dir, cleanFilename);
     fs.writeFileSync(cleanPath, cleanBuffer);
 
-    // 2. Live-context screenshot (palette hidden, markings and highlights visible)
+    // 2. Retrieve initial snapshot to know selections
+    let snapshot = ((await target.page.evaluate(() => {
+      const api = (window as unknown as { __agentBridgeDesignMode?: { getSnapshot?: () => unknown } }).__agentBridgeDesignMode;
+      return api?.getSnapshot?.();
+    })) as Record<string, unknown>) || {};
+
+    const selections = (snapshot?.selections as Array<{
+      selector: string;
+      bounds: { x: number; y: number; width: number; height: number };
+      screenshot_path?: string;
+    }>) || [];
+
+    // 3. Capture individual cropped element screenshots for each selection
+    const elementPaths: string[] = [];
+    for (let i = 0; i < selections.length; i++) {
+      const sel = selections[i];
+      const elUniqueId = Math.random().toString(16).slice(2, 10).toUpperCase();
+      const elFilename = `surface-${surfaceId}-${timestamp}-${elUniqueId}-screenshot.png`;
+      const elPath = path.join(dir, elFilename);
+      try {
+        const loc = target.page.locator(sel.selector).first();
+        if (await loc.isVisible({ timeout: 1000 }).catch(() => false)) {
+          await loc.screenshot({ path: elPath });
+        } else {
+          throw new Error('Element not visible');
+        }
+      } catch {
+        const clip = {
+          x: Math.max(0, Math.round(sel.bounds.x)),
+          y: Math.max(0, Math.round(sel.bounds.y)),
+          width: Math.max(1, Math.round(sel.bounds.width)),
+          height: Math.max(1, Math.round(sel.bounds.height)),
+        };
+        await target.page.screenshot({ clip, path: elPath });
+      }
+      elementPaths.push(elPath);
+      sel.screenshot_path = elPath;
+    }
+
+    // 4. Live-context screenshot (palette hidden, markings and highlights visible)
     await target.page.evaluate(() => {
       const api = (window as unknown as { __agentBridgeDesignMode?: { setCaptureHidden?: (m: string) => void } }).__agentBridgeDesignMode;
       api?.setCaptureHidden?.('palette');
@@ -695,55 +737,79 @@ export class PlaywrightProvider {
     const liveContextPath = path.join(dir, liveContextFilename);
     fs.writeFileSync(liveContextPath, liveContextBuffer);
 
-    // 3. Restore overlay visibility
+    // 5. Restore overlay visibility
     await target.page.evaluate(() => {
       const api = (window as unknown as { __agentBridgeDesignMode?: { setCaptureHidden?: (m: string) => void } }).__agentBridgeDesignMode;
       api?.setCaptureHidden?.('none');
     });
 
-    // 4. Retrieve snapshot and write context.json
-    const snapshot = ((await target.page.evaluate(() => {
-      const api = (window as unknown as { __agentBridgeDesignMode?: { getSnapshot?: () => unknown } }).__agentBridgeDesignMode;
-      return api?.getSnapshot?.();
-    })) as Record<string, unknown>) || {};
-
-    const change = (requestedChange || (snapshot?.prompt_text as string) || 'Design-mode context for the selected page elements.').trim();
     const contextFilename = `surface-${surfaceId}-${timestamp}-${uniqueId}-context.json`;
     const contextPath = path.join(dir, contextFilename);
-    const contextData = {
-      page_url: target.page.url(),
-      requested_change: change,
-      timestamp,
-      clean_screenshot_path: cleanPath,
-      live_context_screenshot_path: liveContextPath,
-      css_diff: snapshot?.css_diff || '',
-      edits: snapshot?.edits || [],
-      selections: snapshot?.selections || [],
-      marks: snapshot?.marks || [],
-    };
-    fs.writeFileSync(contextPath, JSON.stringify(contextData, null, 2));
 
-    // 5. Update browser runtime with artifact paths
+    // 6. Update browser runtime with artifact paths
     await target.page.evaluate((paths) => {
       const api = (window as unknown as { __agentBridgeDesignMode?: { setArtifactPaths?: (p: unknown) => void } }).__agentBridgeDesignMode;
       api?.setArtifactPaths?.(paths);
     }, {
       screenshot_path: cleanPath,
+      page_screenshot_path: cleanPath,
+      element_screenshot_paths: elementPaths,
       live_context_path: liveContextPath,
       context_json_path: contextPath,
     });
 
-    // 6. Format prompt for agent handoff
+    // 7. Re-read snapshot now that runtime has artifact paths and element screenshot paths
+    snapshot = ((await target.page.evaluate(() => {
+      const api = (window as unknown as { __agentBridgeDesignMode?: { getSnapshot?: () => unknown } }).__agentBridgeDesignMode;
+      return api?.getSnapshot?.();
+    })) as Record<string, unknown>) || snapshot;
+
+    const change = (requestedChange || (snapshot?.prompt_text as string) || 'Design-mode context for the selected page elements.').trim();
+
+    // 8. Build structured prompt tokens
+    const promptTokens: Array<{ selection?: number; text?: string }> = [];
+    if (selections.length === 0) {
+      promptTokens.push({ text: change });
+    } else if (selections.length === 1) {
+      promptTokens.push({ selection: 0 });
+      promptTokens.push({ text: change });
+    } else {
+      promptTokens.push({ selection: 0 });
+      promptTokens.push({ text: change });
+      for (let i = 1; i < selections.length; i++) {
+        promptTokens.push({ selection: i });
+      }
+    }
+
+    const contextData = {
+      css_diff: snapshot?.css_diff || '',
+      edits: snapshot?.edits || [],
+      page_screenshot_path: cleanPath,
+      page_url: target.page.url(),
+      prompt: promptTokens,
+      requested_change: change,
+      revision: snapshot?.revision || 0,
+      selections: snapshot?.selections || selections,
+      marks: snapshot?.marks || [],
+    };
+    fs.writeFileSync(contextPath, JSON.stringify(contextData, null, 2));
+
+    // 9. Format prompt for agent handoff (cmux line 1 multimodal format)
+    const line1Tokens = promptTokens.map((t) => {
+      if (t.selection !== undefined) {
+        return elementPaths[t.selection] || `@e${t.selection + 1}`;
+      }
+      return t.text || '';
+    }).filter(Boolean);
+
     const prompt = [
-      change,
+      line1Tokens.join(' '),
       '',
       `Page: ${target.page.url()}`,
-      cleanPath,
-      liveContextPath,
       `Details: ${contextPath}`,
     ].join('\n');
 
-    // 7. Write to clipboard in page context
+    // 10. Write to clipboard in page context
     await target.page.evaluate(async (text) => {
       try {
         await navigator.clipboard.writeText(text);
@@ -754,6 +820,7 @@ export class PlaywrightProvider {
       cleanPath,
       liveContextPath,
       contextPath,
+      elementPaths,
       prompt,
       snapshot,
     };
