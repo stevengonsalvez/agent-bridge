@@ -86,6 +86,16 @@ import { resolvePromptToCss } from './quick-render-jev';
   let showBatch = false;
   let activeInfo: 'ai' | 'manual' | null = null;
   let currentPromptText = '';
+  let layoutOrientation: 'auto' | 'horizontal' | 'vertical' = 'auto';
+  let verticalDockSide: 'right' | 'left' = 'right';
+  let isPromptBarCollapsed = false;
+  let lastRenderedVertical: boolean | null = null;
+
+  const isVerticalMode = (): boolean => {
+    if (layoutOrientation === 'vertical') return true;
+    if (layoutOrientation === 'horizontal') return false;
+    return typeof window !== 'undefined' && window.innerWidth <= 640;
+  };
 
   let overlayHost: HTMLDivElement | null = null;
   let shadowRoot: ShadowRoot | null = null;
@@ -311,9 +321,11 @@ import { resolvePromptToCss } from './quick-render-jev';
     } else {
       overlayHost.style.visibility = 'visible';
       const palette = shadowRoot.querySelector<HTMLElement>('.floating-palette');
+      const promptBar = shadowRoot.querySelector<HTMLElement>('.mobile-prompt-bar');
       const tweaker = shadowRoot.querySelector<HTMLElement>('.tweaker-popover');
       const batch = shadowRoot.querySelector<HTMLElement>('.batch-popover');
       if (palette) palette.style.display = mode === 'palette' ? 'none' : 'flex';
+      if (promptBar) promptBar.style.display = mode === 'palette' ? 'none' : 'flex';
       if (tweaker) tweaker.style.display = mode === 'palette' ? 'none' : (showTweaker ? 'flex' : 'none');
       if (batch) batch.style.display = mode === 'palette' ? 'none' : (showBatch ? 'flex' : 'none');
     }
@@ -838,6 +850,253 @@ import { resolvePromptToCss } from './quick-render-jev';
             padding: 10px 12px;
           }
         }
+
+        /* Vertical layout & rail dock styles */
+        .floating-palette.layout-vertical {
+          position: fixed;
+          top: 50%;
+          transform: translateY(-50%);
+          bottom: auto;
+          left: auto;
+          flex-direction: column;
+          align-items: center;
+          gap: 5px;
+          padding: 7px 5px;
+          width: 44px;
+          border-radius: 26px;
+          box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+          overflow-x: auto;
+          overflow-y: visible;
+          scrollbar-width: none;
+          z-index: 100;
+        }
+        .floating-palette.layout-vertical.dock-right {
+          right: 10px;
+          left: auto;
+        }
+        .floating-palette.layout-vertical.dock-left {
+          left: 10px;
+          right: auto;
+        }
+        .rail-group {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 4px;
+          width: 100%;
+        }
+        .rail-divider {
+          width: 22px;
+          height: 1px;
+          background: rgba(255, 255, 255, 0.16);
+          margin: 2px 0;
+          flex-shrink: 0;
+        }
+        .rail-btn {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          border: none;
+          background: transparent;
+          color: rgba(255, 255, 255, 0.65);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.15s ease;
+          padding: 0;
+          outline: none;
+          position: relative;
+          font-size: 13px;
+          flex-shrink: 0;
+        }
+        .rail-btn:hover {
+          background: rgba(255, 255, 255, 0.12);
+          color: #ffffff;
+        }
+        .rail-btn.active {
+          background: #2563eb;
+          color: #ffffff;
+          box-shadow: 0 0 12px rgba(37, 99, 235, 0.6);
+        }
+        .rail-btn svg {
+          width: 15px;
+          height: 15px;
+          fill: currentColor;
+        }
+        .rail-btn-action {
+          color: #fafafa;
+          font-weight: 600;
+        }
+        .rail-btn-send {
+          background: #2563eb;
+          color: #ffffff;
+          font-weight: bold;
+        }
+        .rail-btn-send:hover {
+          background: #1d4ed8;
+          box-shadow: 0 0 12px rgba(37, 99, 235, 0.5);
+        }
+        .rail-btn-with-sub {
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 32px;
+          height: 32px;
+        }
+        .rail-help-btn {
+          position: absolute;
+          top: -2px;
+          right: -2px;
+          width: 13px;
+          height: 13px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.18);
+          border: 1px solid rgba(255, 255, 255, 0.28);
+          color: #ffffff;
+          font-size: 8.5px;
+          font-weight: 700;
+          line-height: 11px;
+          cursor: pointer;
+          padding: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          outline: none;
+          transition: all 0.15s ease;
+        }
+        .rail-help-btn:hover, .rail-help-btn.active {
+          background: #3b82f6;
+          border-color: #60a5fa;
+          box-shadow: 0 0 6px rgba(59, 130, 246, 0.6);
+        }
+        .rail-badge {
+          position: absolute;
+          top: -2px;
+          right: -2px;
+          min-width: 13px;
+          height: 13px;
+          padding: 0 3px;
+          border-radius: 9999px;
+          background: #ef4444;
+          color: #ffffff;
+          font-size: 8.5px;
+          font-weight: 700;
+          line-height: 13px;
+          text-align: center;
+        }
+        .rail-btn-util {
+          font-size: 13px;
+          color: rgba(255, 255, 255, 0.5);
+        }
+        .rail-btn-util:hover {
+          color: #ffffff;
+        }
+
+        /* Companion mobile prompt bar */
+        .mobile-prompt-bar {
+          position: fixed;
+          bottom: max(12px, env(safe-area-inset-bottom, 12px));
+          z-index: 100;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 5px 8px;
+          background: rgba(22, 22, 26, 0.94);
+          backdrop-filter: blur(20px);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          border-radius: 9999px;
+          box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+          box-sizing: border-box;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          pointer-events: auto;
+        }
+        .mobile-prompt-bar.dock-right {
+          left: 10px;
+          right: 60px;
+          max-width: calc(100vw - 70px);
+        }
+        .mobile-prompt-bar.dock-left {
+          left: 60px;
+          right: 10px;
+          max-width: calc(100vw - 70px);
+        }
+        .mobile-prompt-bar.collapsed {
+          width: auto;
+          padding: 4px 10px;
+        }
+        .mobile-prompt-bar.collapsed .mobile-prompt-input,
+        .mobile-prompt-bar.collapsed .mobile-chips,
+        .mobile-prompt-bar.collapsed .mobile-send-btn,
+        .mobile-prompt-bar.collapsed .mobile-prompt-collapse-btn {
+          display: none !important;
+        }
+        .mobile-prompt-expand-btn {
+          background: transparent;
+          border: none;
+          color: rgba(255, 255, 255, 0.85);
+          font-size: 11.5px;
+          font-weight: 500;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          padding: 2px 4px;
+        }
+        .mobile-prompt-collapse-btn {
+          background: transparent;
+          border: none;
+          color: rgba(255, 255, 255, 0.45);
+          cursor: pointer;
+          font-size: 12px;
+          padding: 0 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          line-height: 1;
+        }
+        .mobile-prompt-collapse-btn:hover {
+          color: #ffffff;
+        }
+        .mobile-chips {
+          max-width: 90px;
+        }
+        .mobile-prompt-input {
+          flex: 1 1 auto;
+          min-width: 70px;
+          width: auto;
+          font-size: 11.5px;
+          padding: 4px 8px;
+        }
+        .mobile-send-btn {
+          height: 26px;
+          padding: 0 9px;
+          font-size: 11px;
+          flex-shrink: 0;
+        }
+
+        /* Popover positioning in vertical mode */
+        .floating-palette.layout-vertical.dock-right ~ .tweaker-popover,
+        .floating-palette.layout-vertical.dock-right ~ .batch-popover,
+        .floating-palette.layout-vertical.dock-right ~ .info-popover {
+          left: 10px;
+          right: 60px;
+          transform: none;
+          width: auto;
+          max-width: calc(100vw - 70px);
+          bottom: max(56px, calc(env(safe-area-inset-bottom, 12px) + 48px));
+        }
+        .floating-palette.layout-vertical.dock-left ~ .tweaker-popover,
+        .floating-palette.layout-vertical.dock-left ~ .batch-popover,
+        .floating-palette.layout-vertical.dock-left ~ .info-popover {
+          left: 60px;
+          right: 10px;
+          transform: none;
+          width: auto;
+          max-width: calc(100vw - 70px);
+          bottom: max(56px, calc(env(safe-area-inset-bottom, 12px) + 48px));
+        }
       </style>
 
       <canvas class="design-canvas" data-canvas></canvas>
@@ -1038,82 +1297,196 @@ import { resolvePromptToCss } from './quick-render-jev';
         </div>
       ` : ''}
 
-      <div class="floating-palette">
-        <div class="mode-group">
-          <button class="mode-btn ${activeTool === 'interact' ? 'active' : ''}" data-tool="interact" title="Interact / Browse (Escape to toggle) - Click inputs, type, navigate">
-            <svg viewBox="0 0 24 24"><path d="M9 11.24V7.5C9 6.12 10.12 5 11.5 5S14 6.12 14 7.5v3.74c1.21-.81 2-2.18 2-3.74C16 5.01 13.99 3 11.5 3S7 5.01 7 7.5c0 1.56.79 2.93 2 3.74zm9.84 4.63l-4.54-2.26c-.17-.07-.35-.11-.54-.11H13v-6c0-.83-.67-1.5-1.5-1.5S10 6.67 10 7.5v10.74l-3.43-.72c-.08-.01-.15-.02-.24-.02-.31 0-.59.13-.79.33l-.79.8 4.94 4.94c.27.27.65.43 1.06.43h6.79c.75 0 1.33-.55 1.44-1.28l.75-5.27c.01-.07.01-.14.01-.21 0-.61-.38-1.16-.95-1.34z"/></svg>
-          </button>
-          <div class="mode-divider"></div>
-          <button class="mode-btn ${activeTool === 'select' ? 'active' : ''}" data-tool="select" title="Select Element (pointer)">
-            <svg viewBox="0 0 24 24"><path d="M4 3l15 9-7 2-3 7L4 3z"/></svg>
-          </button>
-          <button class="mode-btn ${activeTool === 'pen' ? 'active' : ''}" data-tool="pen" title="Freehand Pen">
-            <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-          </button>
-          <button class="mode-btn ${activeTool === 'region' ? 'active' : ''}" data-tool="region" title="Region Box">
-            <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/></svg>
-          </button>
-          <button class="mode-btn ${activeTool === 'arrow' ? 'active' : ''}" data-tool="arrow" title="Draw Arrow">
-            <svg viewBox="0 0 24 24"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg>
-          </button>
-        </div>
+      ${isVerticalMode() ? `
+        <div class="floating-palette layout-vertical dock-${verticalDockSide}">
+          <div class="rail-group rail-tools">
+            <button class="rail-btn ${activeTool === 'select' ? 'active' : ''}" data-tool="select" title="Select Element (pointer)">
+              <svg viewBox="0 0 24 24"><path d="M4 3l15 9-7 2-3 7L4 3z"/></svg>
+            </button>
+            <button class="rail-btn ${activeTool === 'interact' ? 'active' : ''}" data-tool="interact" title="Interact / Browse (Escape to toggle) - Click inputs, type, navigate">
+              <svg viewBox="0 0 24 24"><path d="M9 11.24V7.5C9 6.12 10.12 5 11.5 5S14 6.12 14 7.5v3.74c1.21-.81 2-2.18 2-3.74C16 5.01 13.99 3 11.5 3S7 5.01 7 7.5c0 1.56.79 2.93 2 3.74zm9.84 4.63l-4.54-2.26c-.17-.07-.35-.11-.54-.11H13v-6c0-.83-.67-1.5-1.5-1.5S10 6.67 10 7.5v10.74l-3.43-.72c-.08-.01-.15-.02-.24-.02-.31 0-.59.13-.79.33l-.79.8 4.94 4.94c.27.27.65.43 1.06.43h6.79c.75 0 1.33-.55 1.44-1.28l.75-5.27c.01-.07.01-.14.01-.21 0-.61-.38-1.16-.95-1.34z"/></svg>
+            </button>
+            <button class="rail-btn ${activeTool === 'pen' ? 'active' : ''}" data-tool="pen" title="Freehand Pen">
+              <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+            </button>
+            <button class="rail-btn ${activeTool === 'region' ? 'active' : ''}" data-tool="region" title="Region Box">
+              <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/></svg>
+            </button>
+            <button class="rail-btn ${activeTool === 'arrow' ? 'active' : ''}" data-tool="arrow" title="Draw Arrow">
+              <svg viewBox="0 0 24 24"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg>
+            </button>
+          </div>
 
-        <div class="chips-container">
-          ${selections.map((s, idx) => `
-            <div class="chip ${s.element === activeElement ? 'active' : ''}" style="--chip-color: ${s.color};" data-select-chip="${idx}">
-              <span class="chip-icon">▢</span>
-              <span>&lt;${s.element.localName}&gt;</span>
-              <button class="chip-remove" data-remove-selection="${idx}" title="Remove">&times;</button>
+          <div class="rail-divider"></div>
+
+          <div class="rail-group rail-actions">
+            <div class="rail-btn-with-sub">
+              <button class="rail-btn rail-btn-action" data-action="quick-render" data-action-ai="quick-render-ai" title="⚡ Quick Render (AI) with Jev">
+                ⚡
+              </button>
+              <button class="rail-help-btn ${activeInfo === 'ai' ? 'active' : ''}" data-action="toggle-info-ai" title="How Quick Render (AI) works with Jev">?</button>
             </div>
-          `).join('')}
 
-          ${marks.map((m, idx) => `
-            <div class="chip" style="--chip-color: ${m.color};" data-mark-chip="${idx}">
-              <span class="chip-icon">${m.type === 'region' ? '◰' : m.type === 'arrow' ? '↗' : '✏'}</span>
-              <span>${m.type}</span>
-              <button class="chip-remove" data-remove-mark="${idx}" title="Remove">&times;</button>
+            <div class="rail-btn-with-sub">
+              <button class="rail-btn rail-btn-action" data-action="quick-render-manual" title="Quick Render (Manual Tweaks)">
+                🛠
+              </button>
+              <button class="rail-help-btn ${activeInfo === 'manual' ? 'active' : ''}" data-action="toggle-info-manual" title="How Quick Render (Manual) works">?</button>
             </div>
-          `).join('')}
+
+            ${selections.length > 0 ? `
+              <button class="rail-btn rail-btn-action ${showTweaker ? 'active' : ''}" data-action="toggle-tweaker" title="Tweak Styles (Inspector)">
+                ⚙
+              </button>
+            ` : ''}
+
+            <button class="rail-btn rail-btn-action ${showBatch ? 'active' : ''}" data-action="toggle-batch" title="View Current Batch">
+              📋
+              ${(selections.length + marks.length) > 0 ? `<span class="rail-badge">${selections.length + marks.length}</span>` : ''}
+            </button>
+
+            <button class="rail-btn rail-btn-send" data-action="submit-batch" title="Send to Agent">
+              ➤
+            </button>
+          </div>
+
+          <div class="rail-divider"></div>
+
+          <div class="rail-group rail-utils">
+            <button class="rail-btn rail-btn-util" data-action="toggle-dock-side" title="Flip Dock Side (${verticalDockSide === 'right' ? 'Move to Left' : 'Move to Right'})">
+              ⇄
+            </button>
+            <button class="rail-btn rail-btn-util" data-action="toggle-layout" title="Switch to Horizontal Bar">
+              ⬍
+            </button>
+            <button class="rail-btn rail-btn-util btn-copy" data-action="copy-prompt" title="Copy Prompt for Agent">
+              <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+            </button>
+            <button class="rail-btn rail-btn-util" data-action="clear-all" title="Clear All Selections and Drawings">
+              &times;
+            </button>
+          </div>
         </div>
 
-        <input type="text" class="prompt-field" data-agent-prompt placeholder="Describe the change" value="${currentPromptText}" />
+        <div class="mobile-prompt-bar dock-${verticalDockSide} ${isPromptBarCollapsed ? 'collapsed' : ''}">
+          ${isPromptBarCollapsed ? `
+            <button class="mobile-prompt-expand-btn" data-action="toggle-prompt-bar" title="Expand Prompt Input">
+              💬 <span class="mobile-prompt-expand-label">${currentPromptText ? escapeHtml(currentPromptText.slice(0, 18)) : (selections.length ? `&lt;${selections[0].element.localName}&gt;` : 'Describe change')}</span>
+            </button>
+          ` : ''}
 
-        <button class="btn-action btn-send-agent" data-action="submit-batch" title="Send to Agent (Enter)">
-          ➤ Send
-        </button>
+          ${selections.length > 0 ? `
+            <div class="chips-container mobile-chips">
+              ${selections.map((s, idx) => `
+                <div class="chip ${s.element === activeElement ? 'active' : ''}" style="--chip-color: ${s.color};" data-select-chip="${idx}">
+                  <span class="chip-icon">▢</span>
+                  <span>&lt;${s.element.localName}&gt;</span>
+                  <button class="chip-remove" data-remove-selection="${idx}" title="Remove">&times;</button>
+                </div>
+              `).join('')}
 
-        <div class="render-item-wrap">
-          <button class="btn-action btn-quick-render btn-quick-render-ai" data-action="quick-render" data-action-ai="quick-render-ai" title="Quick Render (AI) with Jev">
-            ⚡ AI Render
+              ${marks.map((m, idx) => `
+                <div class="chip" style="--chip-color: ${m.color};" data-mark-chip="${idx}">
+                  <span class="chip-icon">${m.type === 'region' ? '◰' : m.type === 'arrow' ? '↗' : '✏'}</span>
+                  <span>${m.type}</span>
+                  <button class="chip-remove" data-remove-mark="${idx}" title="Remove">&times;</button>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+
+          <input type="text" class="prompt-field mobile-prompt-input" data-agent-prompt placeholder="Describe the change" value="${escapeHtml(currentPromptText)}" />
+
+          <button class="btn-action btn-send-agent mobile-send-btn" data-action="submit-batch" title="Send to Agent (Enter)">
+            ➤
           </button>
-          <button class="help-question-btn ${activeInfo === 'ai' ? 'active' : ''}" data-action="toggle-info-ai" title="How Quick Render (AI) works with Jev">?</button>
+
+          <button class="mobile-prompt-collapse-btn" data-action="toggle-prompt-bar" title="Minimize Prompt Bar">
+            ▾
+          </button>
         </div>
+      ` : `
+        <div class="floating-palette">
+          <div class="mode-group">
+            <button class="mode-btn ${activeTool === 'interact' ? 'active' : ''}" data-tool="interact" title="Interact / Browse (Escape to toggle) - Click inputs, type, navigate">
+              <svg viewBox="0 0 24 24"><path d="M9 11.24V7.5C9 6.12 10.12 5 11.5 5S14 6.12 14 7.5v3.74c1.21-.81 2-2.18 2-3.74C16 5.01 13.99 3 11.5 3S7 5.01 7 7.5c0 1.56.79 2.93 2 3.74zm9.84 4.63l-4.54-2.26c-.17-.07-.35-.11-.54-.11H13v-6c0-.83-.67-1.5-1.5-1.5S10 6.67 10 7.5v10.74l-3.43-.72c-.08-.01-.15-.02-.24-.02-.31 0-.59.13-.79.33l-.79.8 4.94 4.94c.27.27.65.43 1.06.43h6.79c.75 0 1.33-.55 1.44-1.28l.75-5.27c.01-.07.01-.14.01-.21 0-.61-.38-1.16-.95-1.34z"/></svg>
+            </button>
+            <div class="mode-divider"></div>
+            <button class="mode-btn ${activeTool === 'select' ? 'active' : ''}" data-tool="select" title="Select Element (pointer)">
+              <svg viewBox="0 0 24 24"><path d="M4 3l15 9-7 2-3 7L4 3z"/></svg>
+            </button>
+            <button class="mode-btn ${activeTool === 'pen' ? 'active' : ''}" data-tool="pen" title="Freehand Pen">
+              <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+            </button>
+            <button class="mode-btn ${activeTool === 'region' ? 'active' : ''}" data-tool="region" title="Region Box">
+              <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/></svg>
+            </button>
+            <button class="mode-btn ${activeTool === 'arrow' ? 'active' : ''}" data-tool="arrow" title="Draw Arrow">
+              <svg viewBox="0 0 24 24"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg>
+            </button>
+          </div>
 
-        <div class="render-item-wrap">
-          <button class="btn-action btn-quick-render-manual" data-action="quick-render-manual" title="Quick Render (Manual Tweaks)">
-            ⚡ Manual
+          <div class="chips-container">
+            ${selections.map((s, idx) => `
+              <div class="chip ${s.element === activeElement ? 'active' : ''}" style="--chip-color: ${s.color};" data-select-chip="${idx}">
+                <span class="chip-icon">▢</span>
+                <span>&lt;${s.element.localName}&gt;</span>
+                <button class="chip-remove" data-remove-selection="${idx}" title="Remove">&times;</button>
+              </div>
+            `).join('')}
+
+            ${marks.map((m, idx) => `
+              <div class="chip" style="--chip-color: ${m.color};" data-mark-chip="${idx}">
+                <span class="chip-icon">${m.type === 'region' ? '◰' : m.type === 'arrow' ? '↗' : '✏'}</span>
+                <span>${m.type}</span>
+                <button class="chip-remove" data-remove-mark="${idx}" title="Remove">&times;</button>
+              </div>
+            `).join('')}
+          </div>
+
+          <input type="text" class="prompt-field" data-agent-prompt placeholder="Describe the change" value="${escapeHtml(currentPromptText)}" />
+
+          <button class="btn-action btn-send-agent" data-action="submit-batch" title="Send to Agent (Enter)">
+            ➤ Send
           </button>
-          <button class="help-question-btn ${activeInfo === 'manual' ? 'active' : ''}" data-action="toggle-info-manual" title="How Quick Render (Manual) works">?</button>
+
+          <div class="render-item-wrap">
+            <button class="btn-action btn-quick-render btn-quick-render-ai" data-action="quick-render" data-action-ai="quick-render-ai" title="Quick Render (AI) with Jev">
+              ⚡ AI Render
+            </button>
+            <button class="help-question-btn ${activeInfo === 'ai' ? 'active' : ''}" data-action="toggle-info-ai" title="How Quick Render (AI) works with Jev">?</button>
+          </div>
+
+          <div class="render-item-wrap">
+            <button class="btn-action btn-quick-render-manual" data-action="quick-render-manual" title="Quick Render (Manual Tweaks)">
+              ⚡ Manual
+            </button>
+            <button class="help-question-btn ${activeInfo === 'manual' ? 'active' : ''}" data-action="toggle-info-manual" title="How Quick Render (Manual) works">?</button>
+          </div>
+
+          ${selections.length > 0 ? `
+            <button class="btn-action btn-tweak" data-action="toggle-tweaker" title="Tweak Styles">
+              ⚙ Tweak
+            </button>
+          ` : ''}
+
+          <button class="btn-action btn-batch" data-action="toggle-batch" title="View Current Batch">
+            📋 Batch <span class="batch-count-badge">${selections.length + marks.length}</span>
+          </button>
+
+          <button class="btn-icon btn-copy" data-action="copy-prompt" title="Copy Prompt for Agent">
+            <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+          </button>
+
+          <button class="btn-icon" data-action="toggle-layout" title="Switch to Vertical Rail (Mobile / Clean View)">
+            ⬍
+          </button>
+
+          <button class="btn-icon" data-action="clear-all" title="Clear All Selections and Drawings">
+            &times;
+          </button>
         </div>
-
-        ${selections.length > 0 ? `
-          <button class="btn-action btn-tweak" data-action="toggle-tweaker" title="Tweak Styles">
-            ⚙ Tweak
-          </button>
-        ` : ''}
-
-        <button class="btn-action btn-batch" data-action="toggle-batch" title="View Current Batch">
-          📋 Batch <span class="batch-count-badge">${selections.length + marks.length}</span>
-        </button>
-
-        <button class="btn-icon btn-copy" data-action="copy-prompt" title="Copy Prompt for Agent">
-          <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-        </button>
-
-        <button class="btn-icon" data-action="clear-all" title="Clear All Selections and Drawings">
-          &times;
-        </button>
-      </div>
+      `}
     `;
 
     shadowRoot.innerHTML = html;
@@ -1351,9 +1724,8 @@ import { resolvePromptToCss } from './quick-render-jev';
       }, 1400);
     };
 
-    // Prompt input
-    const promptInput = shadowRoot.querySelector<HTMLInputElement>('[data-agent-prompt]');
-    if (promptInput) {
+    // Prompt input (handles both horizontal palette and mobile companion bar)
+    shadowRoot.querySelectorAll<HTMLInputElement>('[data-agent-prompt]').forEach((promptInput) => {
       promptInput.addEventListener('input', () => {
         currentPromptText = promptInput.value;
       });
@@ -1364,7 +1736,7 @@ import { resolvePromptToCss } from './quick-render-jev';
           executeSubmit();
         }
       });
-    }
+    });
 
     // Info popover toggles
     shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="toggle-info-ai"]').forEach((btn) => {
@@ -1548,6 +1920,35 @@ import { resolvePromptToCss } from './quick-render-jev';
       showBatch = false;
       revision += 1;
       renderOverlay();
+    });
+
+    // Toggle layout orientation (horizontal / vertical dock)
+    shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="toggle-layout"]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        layoutOrientation = isVerticalMode() ? 'horizontal' : 'vertical';
+        revision += 1;
+        renderOverlay();
+      });
+    });
+
+    // Toggle vertical dock side (right / left rail)
+    shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="toggle-dock-side"]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        verticalDockSide = verticalDockSide === 'right' ? 'left' : 'right';
+        revision += 1;
+        renderOverlay();
+      });
+    });
+
+    // Toggle mobile prompt bar collapsed state
+    shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="toggle-prompt-bar"]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        isPromptBarCollapsed = !isPromptBarCollapsed;
+        renderOverlay();
+      });
     });
 
     // Style editors in tweaker popover
@@ -1862,6 +2263,10 @@ import { resolvePromptToCss } from './quick-render-jev';
       enabled,
       active_tool: activeTool,
       active_info: activeInfo,
+      layout_orientation: layoutOrientation,
+      dock_side: verticalDockSide,
+      is_vertical: isVerticalMode(),
+      is_prompt_bar_collapsed: isPromptBarCollapsed,
       selection: selections.length ? buildSelectionSnapshot(selections[selections.length - 1], selections.length - 1) : null,
       selections: selections.map((s, idx) => buildSelectionSnapshot(s, idx)),
       marks: marks.map((m) => ({ ...m })),
@@ -2147,6 +2552,10 @@ import { resolvePromptToCss } from './quick-render-jev';
   };
 
   const handleViewportChange = () => {
+    if (isVerticalMode() !== lastRenderedVertical) {
+      renderOverlay();
+      return;
+    }
     resizeCanvas();
     paintCanvas();
     const boxLayer = shadowRoot?.querySelector('.box-layer');
@@ -2198,6 +2607,31 @@ import { resolvePromptToCss } from './quick-render-jev';
     quickRenderManual,
     toggleInfo: (mode: 'ai' | 'manual' | null) => {
       activeInfo = mode;
+      renderOverlay();
+      return getSnapshot();
+    },
+    setLayoutOrientation: (orientation: 'auto' | 'horizontal' | 'vertical') => {
+      layoutOrientation = orientation;
+      renderOverlay();
+      return getSnapshot();
+    },
+    setDockSide: (side: 'right' | 'left') => {
+      verticalDockSide = side;
+      renderOverlay();
+      return getSnapshot();
+    },
+    toggleLayoutOrientation: () => {
+      layoutOrientation = isVerticalMode() ? 'horizontal' : 'vertical';
+      renderOverlay();
+      return getSnapshot();
+    },
+    toggleDockSide: () => {
+      verticalDockSide = verticalDockSide === 'right' ? 'left' : 'right';
+      renderOverlay();
+      return getSnapshot();
+    },
+    togglePromptBar: () => {
+      isPromptBarCollapsed = !isPromptBarCollapsed;
       renderOverlay();
       return getSnapshot();
     },
