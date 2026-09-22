@@ -87,13 +87,18 @@ async function runTestSuite() {
         clientWidth: palette.clientWidth,
         overflowX: style.overflowX,
         windowWidth: window.innerWidth,
+        isVertical: palette.classList.contains('layout-vertical'),
+        isDockRight: palette.classList.contains('dock-right'),
       };
     });
 
     assert(paletteMetrics.left >= 0, `Palette left edge (${paletteMetrics.left}) must be >= 0`);
     assert(paletteMetrics.right <= paletteMetrics.windowWidth + 2, `Palette right edge (${paletteMetrics.right}) must fit in window (${paletteMetrics.windowWidth})`);
-    assert.equal(paletteMetrics.overflowX, 'auto', 'Palette must have overflow-x: auto for mobile scrolling');
-    logStep('1.3', 'Toolbar fits mobile viewport width', true, `width: ${paletteMetrics.width.toFixed(1)}px, scrollWidth: ${paletteMetrics.scrollWidth}px, overflow-x: auto`);
+    assert.equal(paletteMetrics.isVertical, true, 'Palette must be vertical rail on mobile');
+    assert.equal(paletteMetrics.isDockRight, true, 'Palette must dock to right edge by default');
+    assert(paletteMetrics.width <= 48, `Palette width (${paletteMetrics.width}px) must be compact rail <= 48px`);
+    assert.equal(paletteMetrics.overflowX, 'auto', 'Palette must have overflow-x: auto');
+    logStep('1.3', 'Vertical rail fits mobile viewport', true, `width: ${paletteMetrics.width.toFixed(1)}px (sleek vertical dock on right)`);
 
     // Test tool switching
     const tools = ['select', 'pen', 'region', 'arrow', 'interact'];
