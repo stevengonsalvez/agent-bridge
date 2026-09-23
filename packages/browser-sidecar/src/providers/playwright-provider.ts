@@ -11,6 +11,7 @@ import type {
 } from 'debug-bridge-types';
 import { ProfileStore } from '../profiles/profile-store';
 import { exportStorageState, importStorageState } from '../profiles/storage-state';
+import { injectPromptToTerminal, type TmuxInjectionResult } from '../terminal/tmux-injector';
 
 type SendMessage = (msg: Record<string, unknown> & { type: string }) => void;
 
@@ -23,6 +24,8 @@ export type PlaywrightProviderOptions = {
   storageState?: string;
   headless: boolean;
   channel?: string;
+  tmuxTarget?: string;
+  tmuxAutoEnter?: boolean;
   send: SendMessage;
 };
 
@@ -58,8 +61,13 @@ export class PlaywrightProvider {
   private targetCounter = 0;
   private readonly targets = new Map<string, TargetState>();
   private readonly networkRequests = new Map<string, NetworkRequestState>();
+  private tmuxTarget?: string;
+  private tmuxAutoEnter: boolean = true;
 
-  constructor(private readonly options: PlaywrightProviderOptions) {}
+  constructor(private readonly options: PlaywrightProviderOptions) {
+    this.tmuxTarget = options.tmuxTarget;
+    this.tmuxAutoEnter = options.tmuxAutoEnter !== false;
+  }
 
   async start(): Promise<void> {
     this.sendLifecycle('connecting');
@@ -425,7 +433,22 @@ export class PlaywrightProvider {
             const api = (window as unknown as { __agentBridgeDesignMode?: { status?: () => unknown } }).__agentBridgeDesignMode;
             return api?.status?.();
           });
-          return { snapshot: snap };
+          return {
+            snapshot: snap,
+            tmuxTarget: this.tmuxTarget,
+            tmuxAutoEnter: this.tmuxAutoEnter,
+          };
+        } else if (command.action === 'set_tmux_target') {
+          if (command.tmuxTarget !== undefined) {
+            this.tmuxTarget = command.tmuxTarget;
+          }
+          if (command.tmuxAutoEnter !== undefined) {
+            this.tmuxAutoEnter = command.tmuxAutoEnter;
+          }
+          return {
+            tmuxTarget: this.tmuxTarget,
+            tmuxAutoEnter: this.tmuxAutoEnter,
+          };
         } else if (command.action === 'get_handoff') {
           const artifacts = await this.generateDesignModeArtifacts(target, command.requestedChange);
           const handoff = await target.page.evaluate((change) => {
@@ -520,8 +543,45 @@ export class PlaywrightProvider {
       await page.exposeFunction('__agentBridgeHost', async (msg: { type: string; payload?: Record<string, unknown> }) => {
         if (msg?.type === 'design_mode_handoff') {
           const change = typeof msg.payload?.requested_change === 'string' ? msg.payload.requested_change : undefined;
-          await this.generateDesignModeArtifacts(target, change);
+          const artifacts = await this.generateDesignModeArtifacts(target, change);
+
+          // 1. Inject prompt into terminal via tmux / cmux bracketed paste
+          const injection = await injectPromptToTerminal(artifacts.prompt, {
+            target: this.tmuxTarget,
+            autoEnter: this.tmuxAutoEnter,
+          });
+
+          // 2. Broadcast browser_design_mode_submit WebSocket message
+          this.options.send({
+            type: 'browser_design_mode_submit',
+            providerId: this.options.providerId,
+            targetId: target.ref.id,
+            url: target.page.url(),
+            prompt: artifacts.prompt,
+            requestedChange: change,
+            artifacts: {
+              clean_screenshot_path: artifacts.cleanPath,
+              live_context_path: artifacts.liveContextPath,
+              context_json_path: artifacts.contextPath,
+              element_screenshot_paths: artifacts.elementPaths,
+            },
+            terminalInjection: injection,
+          });
+
+          console.log(`[Design Mode Submit] Received handoff from page: ${target.page.url()}`);
+          if (injection.success) {
+            console.log(`[Design Mode Submit] Injected prompt into ${injection.method} target: ${injection.target} (autoEnter=${this.tmuxAutoEnter})`);
+          } else {
+            console.log(`[Design Mode Submit] Terminal injection skipped/failed: ${injection.error || 'none'}. Copied to clipboard.`);
+          }
+
+          return {
+            success: true,
+            artifacts,
+            terminalInjection: injection,
+          };
         }
+        return { success: false, error: 'Unknown message type' };
       });
     } catch {
       // Ignore if function already exposed

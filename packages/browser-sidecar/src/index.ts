@@ -2,6 +2,7 @@ import type { BrowserCommandMessage, BridgeMessage } from 'debug-bridge-types';
 import { PROTOCOL_VERSION } from 'debug-bridge-types';
 import { PlaywrightProvider } from './providers/playwright-provider';
 import { SidecarClient } from './session/sidecar-client';
+export * from './terminal/tmux-injector';
 
 export type BrowserSidecarOptions = {
   host: string;
@@ -14,6 +15,8 @@ export type BrowserSidecarOptions = {
   storageState?: string;
   headless?: boolean;
   channel?: string;
+  tmuxTarget?: string;
+  tmuxAutoEnter?: boolean;
 };
 
 export type BrowserSidecar = {
@@ -51,6 +54,8 @@ export function createBrowserSidecar(options: BrowserSidecarOptions): BrowserSid
         storageState: options.storageState,
         headless: options.headless ?? true,
         channel: options.channel,
+        tmuxTarget: options.tmuxTarget,
+        tmuxAutoEnter: options.tmuxAutoEnter,
         send,
       });
 
