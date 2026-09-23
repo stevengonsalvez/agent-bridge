@@ -20,6 +20,7 @@ export type DebugBridge = {
   disconnect: () => void;
   isConnected: () => boolean;
   sendState: (scope: string, state: unknown) => void;
+  send?: (msg: unknown) => void;
   feedback?: FeedbackApi;
 };
 
@@ -259,6 +260,14 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
           window.dispatchEvent(new CustomEvent('agent-bridge:agent-status', { detail: msg }));
           return;
         }
+        if (msg.type === 'design_mode_crop_saved') {
+          const dm = (window as unknown as { __agentBridgeDesignMode?: { onCropSaved?: (s: unknown) => void } }).__agentBridgeDesignMode;
+          if (typeof dm?.onCropSaved === 'function') {
+            dm.onCropSaved(msg);
+          }
+          window.dispatchEvent(new CustomEvent('agent-bridge:crop-saved', { detail: msg }));
+          return;
+        }
         if (feedbackController?.handleBridgeMessage(msg)) return;
         commandExecutor?.execute(msg as CommandMessage);
       } catch {
@@ -266,7 +275,16 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
       }
     };
 
+    const saveCropListener = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && typeof detail === 'object') {
+        send(detail);
+      }
+    };
+    window.addEventListener('agent-bridge:save-crop', saveCropListener);
+
     ws.onclose = () => {
+      window.removeEventListener('agent-bridge:save-crop', saveCropListener);
       cleanup();
       resolvedConfig.onDisconnect?.();
       scheduleReconnect();
@@ -310,6 +328,7 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
     disconnect,
     isConnected: () => ws?.readyState === WebSocket.OPEN,
     sendState: (scope, state) => send({ type: 'state_update', scope, state }),
+    send: (msg: unknown) => send(msg as any),
     get feedback() {
       return feedbackController ?? undefined;
     },
