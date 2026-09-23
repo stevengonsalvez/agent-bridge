@@ -742,6 +742,50 @@ import { resolvePromptToCss } from './quick-render-jev';
           flex-shrink: 0;
         }
         .btn-send-agent:hover { background: #1d4ed8; }
+        .btn-copy-prompt {
+          background: rgba(255, 255, 255, 0.08);
+          color: rgba(255, 255, 255, 0.85);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          width: 32px;
+          height: 32px;
+          padding: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 8px;
+          flex-shrink: 0;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .btn-copy-prompt:hover {
+          background: rgba(255, 255, 255, 0.16);
+          color: #fff;
+          border-color: rgba(255, 255, 255, 0.25);
+        }
+        .btn-copy-prompt:active {
+          transform: scale(0.95);
+        }
+        .mobile-copy-btn {
+          width: 30px;
+          height: 30px;
+          border-radius: 6px;
+        }
+        .btn-copy-batch {
+          background: rgba(255, 255, 255, 0.08);
+          color: #f4f4f5;
+          border: 1px solid rgba(255, 255, 255, 0.16);
+          padding: 6px 12px;
+          border-radius: 6px;
+          font-size: 11px;
+          font-weight: 500;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .btn-copy-batch:hover {
+          background: rgba(255, 255, 255, 0.16);
+        }
         .batch-count-badge {
           background: ${showBatch ? '#1d4ed8' : '#2563eb'}; color: #fff; border-radius: 9999px;
           padding: 1px 6px; font-size: 10px; font-weight: 700;
@@ -1218,6 +1262,9 @@ import { resolvePromptToCss } from './quick-render-jev';
             <button class="btn-action" data-action="clear-all" style="background:rgba(255,255,255,0.08);color:#a1a1aa;padding:0 12px;height:28px;">
               Clear
             </button>
+            <button class="btn-copy-batch" data-action="copy-prompt-btn" title="Copy formatted prompt to clipboard (Cmd+V)">
+              📋 Copy Prompt
+            </button>
             <button class="btn-submit-batch" data-action="submit-batch" title="Submit Batch to Agent">
               Submit Batch to Agent
             </button>
@@ -1397,6 +1444,10 @@ import { resolvePromptToCss } from './quick-render-jev';
 
           <input type="text" class="prompt-field mobile-prompt-input" data-agent-prompt placeholder="Describe the change" value="${escapeHtml(currentPromptText)}" />
 
+          <button class="btn-copy-prompt mobile-copy-btn" data-action="copy-prompt-btn" title="Copy formatted prompt to clipboard (Cmd+V)">
+            <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+          </button>
+
           <button class="btn-action btn-send-agent mobile-send-btn" data-action="submit-batch" title="Send to Agent (Enter)">
             ➤
           </button>
@@ -1445,6 +1496,10 @@ import { resolvePromptToCss } from './quick-render-jev';
           </div>
 
           <input type="text" class="prompt-field" data-agent-prompt placeholder="Describe the change" value="${escapeHtml(currentPromptText)}" />
+
+          <button class="btn-copy-prompt" data-action="copy-prompt-btn" title="Copy formatted prompt to clipboard (Cmd+V)">
+            <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+          </button>
 
           <button class="btn-action btn-send-agent" data-action="submit-batch" title="Send to Agent (Enter)">
             ➤ Send
@@ -1710,12 +1765,22 @@ import { resolvePromptToCss } from './quick-render-jev';
         } catch {}
       }
 
-      // 2. Generate screenshot artifacts and copy prompt to clipboard
-      await copyHandoffToClipboard(currentPromptText);
+      // 2. Generate screenshot artifacts, inject terminal, and copy prompt
+      const handoff = await copyHandoffToClipboard(currentPromptText);
 
       allSubmitBtns.forEach((btn) => {
-        btn.textContent = '✓ Sent to Agent!';
-        btn.style.background = '#16a34a';
+        if (handoff.terminalInjected) {
+          btn.textContent = '✓ Sent to Agent (Terminal)!';
+          btn.style.background = '#16a34a';
+          btn.title = `Injected prompt into ${handoff.terminalMethod} target: ${handoff.terminalTarget || 'active'}`;
+        } else if (handoff.clipboardOk) {
+          btn.textContent = '✓ Sent to Agent (Copied)!';
+          btn.style.background = '#0284c7';
+          btn.title = 'Prompt copied to clipboard. Paste with Cmd+V into terminal.';
+        } else {
+          btn.textContent = '✓ Sent to Agent!';
+          btn.style.background = '#16a34a';
+        }
       });
 
       setTimeout(() => {
@@ -1735,6 +1800,39 @@ import { resolvePromptToCss } from './quick-render-jev';
           e.preventDefault();
           executeSubmit();
         }
+      });
+    });
+
+    // Copy prompt button handler
+    shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="copy-prompt-btn"]').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const originalHtml = btn.innerHTML;
+        const originalTitle = btn.title;
+        btn.disabled = true;
+
+        const handoff = await copyHandoffToClipboard(currentPromptText);
+        if (handoff.clipboardOk) {
+          if (btn.classList.contains('btn-copy-batch')) {
+            btn.textContent = '✓ Copied!';
+            btn.style.borderColor = '#16a34a';
+            btn.style.color = '#22c55e';
+          } else {
+            btn.innerHTML = `<svg viewBox="0 0 24 24" width="15" height="15"><path fill="#22c55e" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`;
+            btn.style.borderColor = '#16a34a';
+          }
+          btn.title = '✓ Copied formatted prompt to clipboard (Cmd+V)!';
+        } else {
+          btn.title = 'Copy failed';
+        }
+
+        setTimeout(() => {
+          btn.innerHTML = originalHtml;
+          btn.title = originalTitle;
+          btn.style.borderColor = '';
+          btn.style.color = '';
+          btn.disabled = false;
+        }, 1500);
       });
     });
 
@@ -2407,16 +2505,31 @@ import { resolvePromptToCss } from './quick-render-jev';
     };
   };
 
-  const copyHandoffToClipboard = async (requestedChange?: string): Promise<boolean> => {
+  type HandoffResult = {
+    clipboardOk: boolean;
+    terminalInjected: boolean;
+    terminalMethod?: string;
+    terminalTarget?: string;
+    terminalError?: string;
+  };
+
+  const copyHandoffToClipboard = async (requestedChange?: string): Promise<HandoffResult> => {
     const promptText = (requestedChange || currentPromptText).trim() || 'Design-mode context for the selected page elements.';
     const payload = getHandoffPayload(promptText);
 
     // Notify host or agent bridge
     window.dispatchEvent(new CustomEvent('agent-bridge:handoff', { detail: payload }));
+    let hostResult: {
+      success?: boolean;
+      terminalInjection?: { success: boolean; method: string; target?: string; error?: string };
+    } | null = null;
     const host = (window as unknown as { __agentBridgeHost?: (msg: unknown) => Promise<unknown> | void }).__agentBridgeHost;
     if (typeof host === 'function') {
       try {
-        await host({ type: 'design_mode_handoff', payload });
+        const res = await host({ type: 'design_mode_handoff', payload });
+        if (res && typeof res === 'object') {
+          hostResult = res as typeof hostResult;
+        }
       } catch {}
     }
 
@@ -2447,7 +2560,13 @@ import { resolvePromptToCss } from './quick-render-jev';
         ok = false;
       }
     }
-    return ok;
+    return {
+      clipboardOk: ok,
+      terminalInjected: hostResult?.terminalInjection?.success === true,
+      terminalMethod: hostResult?.terminalInjection?.method,
+      terminalTarget: hostResult?.terminalInjection?.target,
+      terminalError: hostResult?.terminalInjection?.error,
+    };
   };
 
   const applyLivePatch = (css: string) => {
