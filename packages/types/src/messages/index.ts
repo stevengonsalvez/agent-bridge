@@ -34,6 +34,7 @@ import type {
   ProviderLifecycleMessage,
 } from './browser';
 import type { UiFeedbackMessage } from './feedback';
+import type { AgentStatusUpdateMessage } from './design-mode';
 
 export type BridgeMessage =
   | HelloMessage
@@ -59,4 +60,6 @@ export type BridgeMessage =
   | BrowserCommandMessage
   | BrowserDesignModeSubmitMessage
   | BrowserResultMessage
-  | UiFeedbackMessage;
+  | UiFeedbackMessage
+  | AgentStatusUpdateMessage;
+
