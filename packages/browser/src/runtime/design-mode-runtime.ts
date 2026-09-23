@@ -90,6 +90,11 @@ import { resolvePromptToCss } from './quick-render-jev';
   let verticalDockSide: 'right' | 'left' = 'right';
   let isPromptBarCollapsed = false;
   let lastRenderedVertical: boolean | null = null;
+  let currentAgentStatus: {
+    status: 'idle' | 'working' | 'done' | 'error';
+    message?: string;
+    timestamp?: number;
+  } = { status: 'idle' };
 
   const isVerticalMode = (): boolean => {
     if (layoutOrientation === 'vertical') return true;
@@ -1141,6 +1146,79 @@ import { resolvePromptToCss } from './quick-render-jev';
           max-width: calc(100vw - 70px);
           bottom: max(56px, calc(env(safe-area-inset-bottom, 12px) + 48px));
         }
+
+        /* Agent live status indicator styles */
+        .agent-status-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          height: 26px;
+          padding: 0 10px;
+          border-radius: 9999px;
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 0.01em;
+          white-space: nowrap;
+          pointer-events: auto;
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+          animation: statusPillFadeIn 0.2s ease-out;
+        }
+        @keyframes statusPillFadeIn {
+          from { opacity: 0; transform: scale(0.92); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        .agent-status-pill.status-working {
+          background: rgba(37, 99, 235, 0.22);
+          border: 1px solid rgba(59, 130, 246, 0.5);
+          color: #93c5fd;
+          box-shadow: 0 0 12px rgba(37, 99, 235, 0.35);
+        }
+        .agent-status-pill.status-done {
+          background: rgba(22, 163, 74, 0.22);
+          border: 1px solid rgba(34, 197, 94, 0.5);
+          color: #86efac;
+          box-shadow: 0 0 12px rgba(34, 197, 94, 0.35);
+        }
+        .agent-status-pill.status-error {
+          background: rgba(220, 38, 38, 0.22);
+          border: 1px solid rgba(239, 68, 68, 0.5);
+          color: #fca5a5;
+        }
+        .status-spinner {
+          width: 10px;
+          height: 10px;
+          border: 2px solid rgba(147, 197, 253, 0.3);
+          border-top-color: #93c5fd;
+          border-radius: 50%;
+          animation: statusSpin 0.75s linear infinite;
+        }
+        @keyframes statusSpin {
+          to { transform: rotate(360deg); }
+        }
+        .rail-btn-send.status-working {
+          background: #2563eb !important;
+          animation: pulseSend 1.2s infinite ease-in-out;
+        }
+        .rail-btn-send.status-done {
+          background: #16a34a !important;
+        }
+        @keyframes pulseSend {
+          0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.7); }
+          70% { box-shadow: 0 0 0 8px rgba(37, 99, 235, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+        }
+        @media (max-width: 640px) {
+          .agent-status-pill {
+            height: 22px;
+            padding: 0 7px;
+            font-size: 10px;
+          }
+          .agent-status-pill .status-text {
+            max-width: 100px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+        }
       </style>
 
       <canvas class="design-canvas" data-canvas></canvas>
@@ -1392,8 +1470,8 @@ import { resolvePromptToCss } from './quick-render-jev';
               ${(selections.length + marks.length) > 0 ? `<span class="rail-badge">${selections.length + marks.length}</span>` : ''}
             </button>
 
-            <button class="rail-btn rail-btn-send" data-action="submit-batch" title="Send to Agent">
-              ➤
+            <button class="rail-btn rail-btn-send ${currentAgentStatus.status === 'working' ? 'status-working' : currentAgentStatus.status === 'done' ? 'status-done' : ''}" data-action="submit-batch" title="${currentAgentStatus.status === 'working' ? escapeHtml(currentAgentStatus.message || 'Agent working...') : currentAgentStatus.status === 'done' ? 'Changes applied' : 'Send to Agent'}">
+              ${currentAgentStatus.status === 'working' ? '⚙' : currentAgentStatus.status === 'done' ? '✓' : '➤'}
             </button>
           </div>
 
@@ -1452,6 +1530,15 @@ import { resolvePromptToCss } from './quick-render-jev';
             ➤
           </button>
 
+          ${currentAgentStatus.status !== 'idle' ? `
+            <div class="agent-status-pill mobile-status-pill status-${currentAgentStatus.status}" title="${escapeHtml(currentAgentStatus.message || '')}">
+              ${currentAgentStatus.status === 'working' ? '<span class="status-spinner"></span>' : ''}
+              ${currentAgentStatus.status === 'done' ? '<span>✓</span>' : ''}
+              ${currentAgentStatus.status === 'error' ? '<span>⚠</span>' : ''}
+              <span class="status-text">${escapeHtml(currentAgentStatus.message || (currentAgentStatus.status === 'working' ? 'Working...' : 'Done'))}</span>
+            </div>
+          ` : ''}
+
           <button class="mobile-prompt-collapse-btn" data-action="toggle-prompt-bar" title="Minimize Prompt Bar">
             ▾
           </button>
@@ -1504,6 +1591,15 @@ import { resolvePromptToCss } from './quick-render-jev';
           <button class="btn-action btn-send-agent" data-action="submit-batch" title="Send to Agent (Enter)">
             ➤ Send
           </button>
+
+          ${currentAgentStatus.status !== 'idle' ? `
+            <div class="agent-status-pill status-${currentAgentStatus.status}" title="${escapeHtml(currentAgentStatus.message || '')}">
+              ${currentAgentStatus.status === 'working' ? '<span class="status-spinner"></span>' : ''}
+              ${currentAgentStatus.status === 'done' ? '<span>✓</span>' : ''}
+              ${currentAgentStatus.status === 'error' ? '<span>⚠</span>' : ''}
+              <span class="status-text">${escapeHtml(currentAgentStatus.message || (currentAgentStatus.status === 'working' ? 'Agent working...' : 'Changes applied'))}</span>
+            </div>
+          ` : ''}
 
           <div class="render-item-wrap">
             <button class="btn-action btn-quick-render btn-quick-render-ai" data-action="quick-render" data-action-ai="quick-render-ai" title="Quick Render (AI) with Jev">
@@ -1736,6 +1832,13 @@ import { resolvePromptToCss } from './quick-render-jev';
         btn.textContent = 'Submitting...';
       });
 
+      // Set agent status to working immediately
+      currentAgentStatus = {
+        status: 'working',
+        message: 'Agent working on changes...',
+        timestamp: Date.now(),
+      };
+
       // 1. Submit through SDK if present (syncs to bridge WebSocket & feedback store)
       const sdk = (globalThis as unknown as {
         __debugBridge?: {
@@ -1923,13 +2026,28 @@ import { resolvePromptToCss } from './quick-render-jev';
       manualBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         if (edits.size === 0) {
-          const orig = manualBtn.textContent;
-          manualBtn.textContent = 'No tweaks yet';
-          manualBtn.style.background = '#71717a';
+          if (selections.length === 0) {
+            const orig = manualBtn.textContent;
+            manualBtn.textContent = 'Select element first';
+            manualBtn.style.background = '#f59e0b';
+            setTimeout(() => {
+              manualBtn.textContent = orig;
+              manualBtn.style.background = '';
+            }, 1600);
+            return;
+          }
+
+          // If element is selected but no tweaks entered, auto-open tweaker popover
+          showTweaker = true;
+          showBatch = false;
+          activeInfo = null;
+          renderOverlay();
+
+          // Focus first property input in tweaker
           setTimeout(() => {
-            manualBtn.textContent = orig;
-            manualBtn.style.background = '';
-          }, 1500);
+            const firstInput = shadowRoot.querySelector<HTMLInputElement>('.tweaker-popover input[data-edit-prop]');
+            firstInput?.focus();
+          }, 50);
           return;
         }
 
@@ -2371,6 +2489,7 @@ import { resolvePromptToCss } from './quick-render-jev';
       edits: Array.from(edits.values()),
       css_diff: getComputedCssDiff(),
       prompt_text: currentPromptText,
+      agent_status: currentAgentStatus,
       artifacts: {
         screenshot_path: currentArtifacts.screenshot_path,
         page_screenshot_path: pageScreenshot,
@@ -2798,7 +2917,34 @@ import { resolvePromptToCss } from './quick-render-jev';
     },
     applyLivePatch,
     clearLivePatch,
+    setAgentStatus: (statusPayload: { status: 'idle' | 'working' | 'done' | 'error'; message?: string; timestamp?: number }) => {
+      currentAgentStatus = {
+        status: statusPayload.status || 'idle',
+        message: statusPayload.message || '',
+        timestamp: statusPayload.timestamp || Date.now(),
+      };
+      if (statusPayload.status === 'done') {
+        setTimeout(() => {
+          if (currentAgentStatus.status === 'done') {
+            currentAgentStatus = { status: 'idle' };
+            renderOverlay();
+          }
+        }, 12000);
+      }
+      renderOverlay();
+      return getSnapshot();
+    },
+    getAgentStatus: () => currentAgentStatus,
   };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('agent-bridge:agent-status', ((e: CustomEvent) => {
+      if (e.detail && typeof e.detail === 'object') {
+        const payload = e.detail as { status: 'idle' | 'working' | 'done' | 'error'; message?: string; timestamp?: number };
+        runtimeApi.setAgentStatus(payload);
+      }
+    }) as EventListener);
+  }
 
   (globalThis as unknown as { __agentBridgeDesignMode: typeof runtimeApi }).__agentBridgeDesignMode = runtimeApi;
 })();
