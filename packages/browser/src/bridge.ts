@@ -251,6 +251,14 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data) as BridgeMessage;
+        if (msg.type === 'agent_status_update') {
+          const dm = (window as unknown as { __agentBridgeDesignMode?: { setAgentStatus?: (s: unknown) => void } }).__agentBridgeDesignMode;
+          if (typeof dm?.setAgentStatus === 'function') {
+            dm.setAgentStatus(msg);
+          }
+          window.dispatchEvent(new CustomEvent('agent-bridge:agent-status', { detail: msg }));
+          return;
+        }
         if (feedbackController?.handleBridgeMessage(msg)) return;
         commandExecutor?.execute(msg as CommandMessage);
       } catch {
