@@ -7,6 +7,7 @@
  */
 
 import { resolvePromptToCss } from './quick-render-jev';
+import html2canvas from 'html2canvas-pro';
 
 (() => {
   'use strict';
@@ -68,6 +69,7 @@ import { resolvePromptToCss } from './quick-render-jev';
     points?: StoredPoint[];
     bounds?: { x: number; y: number; width: number; height: number };
     createdAt: string;
+    screenshot_path?: string;
   };
 
   type ArtifactPaths = {
@@ -2246,13 +2248,15 @@ import { resolvePromptToCss } from './quick-render-jev';
             createdAt: new Date().toISOString(),
           });
         } else if (activeTool === 'region') {
-          marks.push({
+          const regionMark: StoredMark = {
             id: `mark_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`,
             type: 'region',
             color: '#AF52DE',
             bounds: getBoundsFromPoints(dragStart, end),
             createdAt: new Date().toISOString(),
-          });
+          };
+          marks.push(regionMark);
+          captureRegionCrop(regionMark);
         } else if (activeTool === 'rect') {
           marks.push({
             id: `mark_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`,
@@ -2356,6 +2360,140 @@ import { resolvePromptToCss } from './quick-render-jev';
     }
   };
 
+  const pendingCrops = new Map<string, (filePath: string) => void>();
+
+  const onCropSaved = (msg: { cropId?: string; filePath?: string }) => {
+    if (msg.cropId && msg.filePath && pendingCrops.has(msg.cropId)) {
+      const cb = pendingCrops.get(msg.cropId);
+      pendingCrops.delete(msg.cropId);
+      cb?.(msg.filePath);
+    }
+  };
+
+  const requestSaveCrop = (
+    dataUrl: string,
+    cropId: string,
+    meta?: { kind: 'element' | 'region'; selector?: string; filename?: string }
+  ): Promise<string | null> => {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        pendingCrops.delete(cropId);
+        resolve(null);
+      }, 5000);
+
+      pendingCrops.set(cropId, (filePath: string) => {
+        clearTimeout(timeout);
+        resolve(filePath);
+      });
+
+      const msg = {
+        type: 'design_mode_save_crop',
+        cropId,
+        data: dataUrl,
+        kind: meta?.kind,
+        selector: meta?.selector,
+        filename: meta?.filename,
+        timestamp: Date.now(),
+      };
+
+      const bridge = (window as unknown as { __debugBridge?: { send?: (m: unknown) => void } }).__debugBridge;
+      if (bridge && typeof bridge.send === 'function') {
+        bridge.send(msg);
+      } else {
+        window.dispatchEvent(new CustomEvent('agent-bridge:save-crop', { detail: msg }));
+      }
+    });
+  };
+
+  const captureElementCrop = async (sel: StoredSelection): Promise<string | null> => {
+    if (sel.screenshot_path) return sel.screenshot_path;
+    const rect = sel.element.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+
+    try {
+      const cropCanvas = await html2canvas(sel.element, {
+        logging: false,
+        useCORS: true,
+        scale: Math.min(window.devicePixelRatio || 1, 2),
+        ignoreElements: (el: Element) => Boolean(el.hasAttribute && el.hasAttribute('data-agent-bridge-design-overlay')),
+      });
+
+      let finalCanvas = cropCanvas;
+      if (cropCanvas.width > 800 || cropCanvas.height > 800) {
+        const scale = Math.min(800 / cropCanvas.width, 800 / cropCanvas.height);
+        const resized = document.createElement('canvas');
+        resized.width = Math.round(cropCanvas.width * scale);
+        resized.height = Math.round(cropCanvas.height * scale);
+        const ctx = resized.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(cropCanvas, 0, 0, resized.width, resized.height);
+          finalCanvas = resized;
+        }
+      }
+
+      const dataUrl = finalCanvas.toDataURL('image/png');
+      const cropId = `crop_el_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+      const filePath = await requestSaveCrop(dataUrl, cropId, {
+        kind: 'element',
+        selector: sel.selector,
+      });
+      if (filePath) {
+        sel.screenshot_path = filePath;
+      }
+      return filePath;
+    } catch {
+      return null;
+    }
+  };
+
+  const captureRegionCrop = async (mark: StoredMark): Promise<string | null> => {
+    if (mark.screenshot_path || mark.type !== 'region' || !mark.bounds) return mark.screenshot_path || null;
+    const bounds = mark.bounds;
+    if (bounds.width === 0 || bounds.height === 0) return null;
+
+    try {
+      const cropCanvas = await html2canvas(document.body, {
+        logging: false,
+        useCORS: true,
+        scale: Math.min(window.devicePixelRatio || 1, 2),
+        x: bounds.x + window.scrollX,
+        y: bounds.y + window.scrollY,
+        width: bounds.width,
+        height: bounds.height,
+        windowWidth: window.innerWidth,
+        windowHeight: window.innerHeight,
+        scrollX: window.scrollX,
+        scrollY: window.scrollY,
+        ignoreElements: (el: Element) => Boolean(el.hasAttribute && el.hasAttribute('data-agent-bridge-design-overlay')),
+      });
+
+      let finalCanvas = cropCanvas;
+      if (cropCanvas.width > 800 || cropCanvas.height > 800) {
+        const scale = Math.min(800 / cropCanvas.width, 800 / cropCanvas.height);
+        const resized = document.createElement('canvas');
+        resized.width = Math.round(cropCanvas.width * scale);
+        resized.height = Math.round(cropCanvas.height * scale);
+        const ctx = resized.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(cropCanvas, 0, 0, resized.width, resized.height);
+          finalCanvas = resized;
+        }
+      }
+
+      const dataUrl = finalCanvas.toDataURL('image/png');
+      const cropId = `crop_reg_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+      const filePath = await requestSaveCrop(dataUrl, cropId, {
+        kind: 'region',
+      });
+      if (filePath) {
+        mark.screenshot_path = filePath;
+      }
+      return filePath;
+    } catch {
+      return null;
+    }
+  };
+
   const addSelection = (element: HTMLElement) => {
     const color = selectionPalette[colorSequence % selectionPalette.length];
     colorSequence += 1;
@@ -2371,6 +2509,7 @@ import { resolvePromptToCss } from './quick-render-jev';
     };
     selections.push(sel);
     revision += 1;
+    captureElementCrop(sel);
   };
 
   const removeSelection = (index: number) => {
@@ -2557,8 +2696,22 @@ import { resolvePromptToCss } from './quick-render-jev';
     }
 
     // Fallback if artifacts are not yet written:
+    const tokens = getPromptTokens(userPrompt);
+    const line1Tokens = tokens.map((t) => {
+      if (t.selection !== undefined) {
+        const sel = selections[t.selection];
+        const elPath = sel?.screenshot_path || (currentArtifacts.element_screenshot_paths && currentArtifacts.element_screenshot_paths[t.selection]);
+        return elPath || `@e${t.selection + 1}`;
+      }
+      return t.text || '';
+    }).filter(Boolean);
+
+    // If any region marks have screenshot paths, append them to line 1
+    const regionPaths = marks.filter((m) => m.type === 'region' && m.screenshot_path).map((m) => m.screenshot_path as string);
+    const line1 = [...line1Tokens, ...regionPaths].join(' ');
+
     const lines: string[] = [
-      userPrompt,
+      line1,
       '',
       `Page: ${window.location.href}`,
     ];
@@ -2566,7 +2719,8 @@ import { resolvePromptToCss } from './quick-render-jev';
     if (selections.length > 0) {
       lines.push('', `Selected Elements (${selections.length}):`);
       selections.forEach((sel, idx) => {
-        lines.push(`- Target @e${idx + 1} <${sel.element.localName}>:`);
+        const pathSuffix = sel.screenshot_path ? ` (${sel.screenshot_path})` : '';
+        lines.push(`- Target @e${idx + 1} <${sel.element.localName}>${pathSuffix}:`);
         lines.push(`  Selector: ${sel.selector}`);
         if (sel.xpath) lines.push(`  XPath: ${sel.xpath}`);
         const selEdits = Array.from(edits.values()).filter((e) => e.id.startsWith(`${idx}::`));
@@ -2586,8 +2740,9 @@ import { resolvePromptToCss } from './quick-render-jev';
     if (marks.length > 0) {
       lines.push('', `Annotations (${marks.length}):`);
       marks.forEach((m, idx) => {
+        const pathSuffix = m.screenshot_path ? ` (${m.screenshot_path})` : '';
         if (m.type === 'region' && m.bounds) {
-          lines.push(`- Mark #${idx + 1} [region]: x=${Math.round(m.bounds.x)}, y=${Math.round(m.bounds.y)}, ${Math.round(m.bounds.width)}x${Math.round(m.bounds.height)}`);
+          lines.push(`- Mark #${idx + 1} [region]${pathSuffix}: x=${Math.round(m.bounds.x)}, y=${Math.round(m.bounds.y)}, ${Math.round(m.bounds.width)}x${Math.round(m.bounds.height)}`);
         } else if (m.type === 'arrow' && m.points) {
           lines.push(`- Mark #${idx + 1} [arrow]: (${m.points[0]?.x}, ${m.points[0]?.y}) -> (${m.points[1]?.x}, ${m.points[1]?.y})`);
         } else {
@@ -2634,6 +2789,15 @@ import { resolvePromptToCss } from './quick-render-jev';
 
   const copyHandoffToClipboard = async (requestedChange?: string): Promise<HandoffResult> => {
     const promptText = (requestedChange || currentPromptText).trim() || 'Design-mode context for the selected page elements.';
+
+    // Ensure crops are captured for selections and region marks
+    try {
+      await Promise.all([
+        ...selections.filter((s) => !s.screenshot_path).map((s) => captureElementCrop(s)),
+        ...marks.filter((m) => m.type === 'region' && !m.screenshot_path).map((m) => captureRegionCrop(m)),
+      ]);
+    } catch {}
+
     const payload = getHandoffPayload(promptText);
 
     // Notify host or agent bridge
@@ -2935,6 +3099,7 @@ import { resolvePromptToCss } from './quick-render-jev';
       return getSnapshot();
     },
     getAgentStatus: () => currentAgentStatus,
+    onCropSaved,
   };
 
   if (typeof window !== 'undefined') {
@@ -2942,6 +3107,12 @@ import { resolvePromptToCss } from './quick-render-jev';
       if (e.detail && typeof e.detail === 'object') {
         const payload = e.detail as { status: 'idle' | 'working' | 'done' | 'error'; message?: string; timestamp?: number };
         runtimeApi.setAgentStatus(payload);
+      }
+    }) as EventListener);
+
+    window.addEventListener('agent-bridge:crop-saved', ((e: CustomEvent) => {
+      if (e.detail && typeof e.detail === 'object') {
+        onCropSaved(e.detail);
       }
     }) as EventListener);
   }
