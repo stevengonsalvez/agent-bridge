@@ -1,3 +1,7 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { randomUUID } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import type {
   BrowserResultMessage,
@@ -12,6 +16,7 @@ import type {
   UiFeedbackSuggestionAddedMessage,
   UiFeedbackSuggestionCommentedMessage,
   UiFeedbackSuggestionRejectedMessage,
+  DesignModeSaveCropMessage,
 } from 'debug-bridge-types';
 import { ProviderRegistry, isBrowserCommand, type ClientRecord, type ClientRole } from './provider-registry';
 import { FeedbackStore } from './feedback-store';
@@ -133,6 +138,34 @@ export function startServer(config: CliConfig, callbacks: ServerCallbacks): Debu
           const created = feedbackStore.persistBatch(msg as UiFeedbackBatchSubmitMessage);
           broadcastObject(sender.sessionId, 'agent', created, ws);
           callbacks.onTelemetry(created);
+          return;
+        }
+
+        if (msg.type === 'design_mode_save_crop') {
+          const cropMsg = msg as DesignModeSaveCropMessage;
+          try {
+            const rawData = cropMsg.data || '';
+            const match = rawData.match(/^data:image\/(\w+);base64,(.+)$/);
+            const ext = match ? (match[1] === 'jpeg' ? 'jpg' : match[1]) : 'png';
+            const base64Content = match ? match[2] : rawData.replace(/^data:[^;]+;base64,/, '');
+            const buffer = Buffer.from(base64Content, 'base64');
+
+            // Write to os.tmpdir() matching CMUX pattern /var/folders/.../T/orca-paste-...
+            const targetDir = os.tmpdir();
+            const filename = cropMsg.filename || `orca-paste-${Date.now()}-${randomUUID()}.${ext}`;
+            const filePath = path.join(targetDir, filename);
+            fs.writeFileSync(filePath, buffer);
+
+            const reply = {
+              type: 'design_mode_crop_saved',
+              cropId: cropMsg.cropId,
+              filePath,
+              timestamp: Date.now(),
+            };
+            ws.send(JSON.stringify(reply));
+          } catch (err: any) {
+            console.error('[websocket-server] Failed to save crop asset:', err?.message);
+          }
           return;
         }
 
