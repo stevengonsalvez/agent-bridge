@@ -24,6 +24,7 @@ import type { CommandMessage } from './commands';
 import type { CommandResultMessage } from './results';
 import type {
   BrowserCommandMessage,
+  BrowserDesignModeSubmitMessage,
   BrowserNetworkFailedMessage,
   BrowserNetworkRequestMessage,
   BrowserNetworkResponseMessage,
@@ -56,5 +57,6 @@ export type BridgeMessage =
   | BrowserNetworkResponseMessage
   | BrowserNetworkFailedMessage
   | BrowserCommandMessage
+  | BrowserDesignModeSubmitMessage
   | BrowserResultMessage
   | UiFeedbackMessage;
