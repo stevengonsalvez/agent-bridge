@@ -78,6 +78,11 @@ export type DesignModeSnapshot = {
   css_diff: string;
   prompt_text?: string;
   artifacts?: DesignModeArtifacts;
+  agent_status?: {
+    status: AgentStatus;
+    message?: string;
+    timestamp?: number;
+  };
 };
 
 export type DesignModeHandoffPayload = {
@@ -106,3 +111,14 @@ export type InteractiveElementRef = {
   disabled?: boolean;
   value?: string;
 };
+
+export type AgentStatus = 'idle' | 'working' | 'done' | 'error';
+
+export type AgentStatusUpdateMessage = {
+  type: 'agent_status_update';
+  status: AgentStatus;
+  message?: string;
+  batchId?: string;
+  timestamp?: number;
+};
+
