@@ -53,9 +53,27 @@ export function registerBrowserCommands(program: Command): void {
     const server = startServer(config, {
       onAppConnected: () => {},
       onAppDisconnected: () => {},
-      onTelemetry: () => {},
+      onTelemetry: (msg) => {
+        if (msg.type === 'browser_design_mode_submit') {
+          const submit = msg as any;
+          console.log(`\n[Design Mode Submit] Received prompt from ${submit.url}:`);
+          console.log(`  ${submit.prompt?.split('\n')[0]}`);
+          if (submit.terminalInjection?.success) {
+            console.log(`  ✓ Injected into ${submit.terminalInjection.method} target: ${submit.terminalInjection.target}`);
+          } else {
+            console.log(`  📋 Copied to clipboard (${submit.terminalInjection?.error || 'no terminal target'})`);
+          }
+        }
+      },
       onCommandResult: () => {},
     });
+
+    const tmuxTarget =
+      opts.tmux === false || opts.tmux === 'none'
+        ? undefined
+        : typeof opts.tmux === 'string'
+          ? opts.tmux
+          : process.env.AGENT_BRIDGE_TMUX_TARGET || 'auto';
 
     const sidecar = createBrowserSidecar({
       host: config.host,
@@ -65,6 +83,8 @@ export function registerBrowserCommands(program: Command): void {
       mode: 'managed',
       headless: isHeadless,
       channel: opts.channel,
+      tmuxTarget,
+      tmuxAutoEnter: opts.tmuxEnter !== false,
     });
 
     await sidecar.start();
@@ -230,7 +250,8 @@ export function registerBrowserCommands(program: Command): void {
       | 'clear_preview'
       | 'clear_selections'
       | 'set_tool'
-      | 'clear_marks' = 'status';
+      | 'clear_marks'
+      | 'set_tmux_target' = 'status';
 
     let tool = opts.tool;
     if ((action === 'tool' || action === 'set-tool') && subArg) {
@@ -247,6 +268,14 @@ export function registerBrowserCommands(program: Command): void {
     else if (action === 'clear-marks') act = 'clear_marks';
     else if (action === 'clear-preview') act = 'clear_preview';
     else if (action === 'tool' || action === 'set-tool' || tool) act = 'set_tool';
+    else if (action === 'set-tmux' || action === 'tmux' || action === 'set_tmux_target') act = 'set_tmux_target';
+
+    const tmuxTarget =
+      opts.tmux === false || opts.tmux === 'none'
+        ? undefined
+        : typeof opts.tmux === 'string'
+          ? opts.tmux
+          : subArg;
 
     const res = await sendBrowserCommand(
       {
@@ -255,6 +284,8 @@ export function registerBrowserCommands(program: Command): void {
         tool,
         requestedChange: opts.request,
         cssPatch: opts.css,
+        tmuxTarget: act === 'set_tmux_target' ? tmuxTarget : (opts.tmux !== undefined ? tmuxTarget : undefined),
+        tmuxAutoEnter: opts.tmuxEnter !== false,
       },
       { port, session: opts.session }
     );
@@ -304,6 +335,8 @@ export function registerBrowserCommands(program: Command): void {
     .option('-t, --tool <tool>', 'Active tool (select, pen, rect, arrow, region, interact)')
     .option('--css <string>', 'Optional custom CSS patch for quick-render')
     .option('-c, --copy', 'Copy prompt to clipboard', false)
+    .option('--tmux [target]', 'Target tmux pane/session to inject prompts on submit (e.g. %1, dev-session, or auto)')
+    .option('--no-tmux-enter', 'Do not press Enter after injecting prompt into tmux')
     .option('-p, --port <number>', 'Bridge port', '4000')
     .option('-s, --session <string>', 'Session ID', 'default')
     .option('--json', 'Output result as JSON', false)
@@ -322,6 +355,8 @@ export function registerBrowserCommands(program: Command): void {
     .option('-t, --tool <tool>', 'Active tool (select, pen, rect, arrow, region, interact)')
     .option('--css <string>', 'Optional custom CSS patch for quick-render')
     .option('-c, --copy', 'Copy prompt to clipboard', false)
+    .option('--tmux [target]', 'Target tmux pane/session to inject prompts on submit (e.g. %1, dev-session, or auto)')
+    .option('--no-tmux-enter', 'Do not press Enter after injecting prompt into tmux')
     .option('--json', 'Output result as JSON', false)
     .action(handleDesignModeOrOpen);
 

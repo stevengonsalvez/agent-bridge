@@ -151,10 +151,34 @@ export type BrowserDesignModeCommand = BrowserCommandBase & {
     | 'clear_preview'
     | 'clear_selections'
     | 'set_tool'
-    | 'clear_marks';
+    | 'clear_marks'
+    | 'set_tmux_target';
   tool?: 'interact' | 'select' | 'pen' | 'rect' | 'arrow' | 'region';
   requestedChange?: string;
   cssPatch?: string;
+  tmuxTarget?: string;
+  tmuxAutoEnter?: boolean;
+};
+
+export type BrowserDesignModeSubmitMessage = BaseMessage & {
+  type: 'browser_design_mode_submit';
+  providerId: string;
+  targetId?: string;
+  url: string;
+  prompt: string;
+  requestedChange?: string;
+  artifacts?: {
+    clean_screenshot_path?: string;
+    live_context_path?: string;
+    context_json_path?: string;
+    element_screenshot_paths?: string[];
+  };
+  terminalInjection?: {
+    success: boolean;
+    method: 'tmux' | 'cmux' | 'none';
+    target?: string;
+    error?: string;
+  };
 };
 
 export type BrowserNetworkGetResponseBodyCommand = BrowserCommandBase & {
