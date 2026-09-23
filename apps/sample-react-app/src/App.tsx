@@ -55,7 +55,9 @@ function Home() {
       data-feature="demo-home"
     >
       <h1>Welcome to Debug Bridge Demo</h1>
-      <p>Use the navigation to explore the app.</p>
+      <p style={{ fontSize: '1.5rem', fontStyle: 'italic', color: '#475569' }}>
+        Use the navigation to explore the app.
+      </p>
     </div>
   );
 }
