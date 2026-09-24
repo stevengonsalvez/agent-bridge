@@ -1414,12 +1414,12 @@ import html2canvas from 'html2canvas-pro';
             </div>
           </div>
           <div class="gateway-key-box" style="margin-top:10px;padding-top:8px;border-top:1px solid #27272a;display:flex;flex-direction:column;gap:5px;">
-            <div style="font-size:10px;font-weight:700;color:#a1a1aa;text-transform:uppercase;letter-spacing:0.04em;">Vercel AI Gateway Key (Jev)</div>
+            <div style="font-size:10px;font-weight:700;color:#a1a1aa;text-transform:uppercase;letter-spacing:0.04em;">TypeSafe AI / Jev API Key</div>
             <div style="display:flex;gap:6px;align-items:center;">
-              <input type="password" data-gateway-key-input placeholder="vck_... (or TYPESAFE_API_KEY)" value="${getStoredGatewayKey()}" style="flex:1;background:#27272a;border:1px solid #3f3f46;color:#f4f4f5;border-radius:6px;padding:4px 8px;font-size:11px;font-family:monospace;" />
+              <input type="password" data-gateway-key-input placeholder="apikey_... (or vck_...)" value="${getStoredGatewayKey()}" style="flex:1;background:#27272a;border:1px solid #3f3f46;color:#f4f4f5;border-radius:6px;padding:4px 8px;font-size:11px;font-family:monospace;" />
               <button class="btn-action" data-action="save-gateway-key" style="background:#10b981;color:#ffffff;border:none;border-radius:6px;padding:4px 10px;font-size:10.5px;font-weight:700;cursor:pointer;">Save</button>
             </div>
-            <div class="gateway-status" style="font-size:10px;color:${getStoredGatewayKey() ? '#4ade80' : '#71717a'};">${getStoredGatewayKey() ? '✓ Key active in browser localStorage' : 'No key set (using heuristic fallback)'}</div>
+            <div class="gateway-status" style="font-size:10px;color:${getStoredGatewayKey() ? '#4ade80' : '#71717a'};">${getStoredGatewayKey() ? (getStoredGatewayKey().startsWith('apikey_') ? '✓ TypeSafe AI direct active (<80ms)' : '✓ Gateway key active in localStorage') : 'No key set (using heuristic fallback)'}</div>
           </div>
         </div>
       ` : ''}
