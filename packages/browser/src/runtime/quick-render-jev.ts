@@ -40,13 +40,16 @@ const resolveGatewayKey = (optionsKey?: string): string => {
     } catch {}
   }
   if (typeof process !== 'undefined' && process?.env) {
-    return process.env.VERCEL_AI_GATEWAY_KEY || process.env.TYPESAFE_API_KEY || '';
+    return process.env.TYPESAFE_API_KEY || process.env.VERCEL_AI_GATEWAY_KEY || '';
   }
   return '';
 };
 
 const DEFAULT_GATEWAY_URL = 'https://ai-gateway.vercel.sh/v4/ai/evaluation-model';
+const DEFAULT_TYPESAFE_URL = 'https://api.typesafe.ai/v1/systemone';
+const LOCAL_TYPESAFE_URL = '/api/typesafe/v1/systemone';
 const DEFAULT_MODEL = 'typesafe-ai/jev';
+const DEFAULT_TYPESAFE_MODEL = 'jev-latest';
 
 // Standard CSS color names recognized in web design
 const CSS_COLOR_NAMES = new Set([
@@ -329,9 +332,9 @@ export function buildJevQuestions(
 }
 
 /**
- * Step 3: Call Jev via Vercel AI Gateway
+ * Step 3: Call Jev via direct TypeSafe API or Vercel AI Gateway
  */
-async function callVercelAiGateway(
+async function callJevApi(
   prompt: string,
   element: ElementContext,
   questions: Record<string, any>,
@@ -341,23 +344,32 @@ async function callVercelAiGateway(
   if (!apiKey) {
     throw new Error('No Gateway API key configured');
   }
-  const endpoint = options.gatewayUrl || DEFAULT_GATEWAY_URL;
-  const model = options.model || DEFAULT_MODEL;
+
+  const isTypeSafeDirect =
+    apiKey.startsWith('apikey_') ||
+    options.gatewayUrl?.includes('typesafe.ai') ||
+    (!apiKey.startsWith('vck_') && !options.gatewayUrl?.includes('vercel'));
+
+  const model = options.model || (isTypeSafeDirect ? DEFAULT_TYPESAFE_MODEL : DEFAULT_MODEL);
+  const endpoints = options.gatewayUrl
+    ? [options.gatewayUrl]
+    : isTypeSafeDirect
+    ? (typeof window !== 'undefined' ? [LOCAL_TYPESAFE_URL, DEFAULT_TYPESAFE_URL] : [DEFAULT_TYPESAFE_URL])
+    : [DEFAULT_GATEWAY_URL];
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs || 3000);
 
   try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'ai-model-id': model,
-        'ai-evaluation-model-specification-version': '4',
-        'ai-gateway-protocol-version': '0.0.1',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    };
+
+    let bodyJson: string;
+    if (isTypeSafeDirect) {
+      bodyJson = JSON.stringify({
+        model,
         state: {
           prompt,
           target_element: {
@@ -367,27 +379,59 @@ async function callVercelAiGateway(
           },
         },
         questions,
-      }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Gateway returned ${response.status}: ${errorText}`);
+      });
+    } else {
+      headers['ai-model-id'] = model;
+      headers['ai-evaluation-model-specification-version'] = '4';
+      headers['ai-gateway-protocol-version'] = '0.0.1';
+      bodyJson = JSON.stringify({
+        state: {
+          prompt,
+          target_element: {
+            selector: element.selector,
+            tagName: element.tagName,
+            textContent: element.textContent?.slice(0, 100),
+          },
+        },
+        questions,
+      });
     }
 
-    const data = await response.json();
-    return {
-      answers: data.answers || {},
-      model: data.model || model,
-    };
+    let lastError: Error | null = null;
+    for (const endpoint of endpoints) {
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers,
+          body: bodyJson,
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Jev API (${isTypeSafeDirect ? 'TypeSafe' : 'Vercel'}) returned ${response.status}: ${errorText}`);
+        }
+
+        const data = await response.json();
+        clearTimeout(timeoutId);
+        return {
+          answers: data.answers || {},
+          model: data.model || model,
+        };
+      } catch (err: any) {
+        lastError = err;
+      }
+    }
+
+    clearTimeout(timeoutId);
+    throw lastError || new Error('All Jev API endpoints failed');
   } catch (err: any) {
     clearTimeout(timeoutId);
     throw err;
   }
 }
+
+const callVercelAiGateway = callJevApi;
 
 /**
  * Step 4: Fallback heuristic slot filler when Gateway is unverified or offline
