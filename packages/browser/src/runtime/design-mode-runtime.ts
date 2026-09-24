@@ -7,6 +7,7 @@
  */
 
 import { resolvePromptToCss } from './quick-render-jev';
+import html2canvas from 'html2canvas-pro';
 
 (() => {
   'use strict';
@@ -68,6 +69,7 @@ import { resolvePromptToCss } from './quick-render-jev';
     points?: StoredPoint[];
     bounds?: { x: number; y: number; width: number; height: number };
     createdAt: string;
+    screenshot_path?: string;
   };
 
   type ArtifactPaths = {
@@ -90,6 +92,11 @@ import { resolvePromptToCss } from './quick-render-jev';
   let verticalDockSide: 'right' | 'left' = 'right';
   let isPromptBarCollapsed = false;
   let lastRenderedVertical: boolean | null = null;
+  let currentAgentStatus: {
+    status: 'idle' | 'working' | 'done' | 'error';
+    message?: string;
+    timestamp?: number;
+  } = { status: 'idle' };
 
   const isVerticalMode = (): boolean => {
     if (layoutOrientation === 'vertical') return true;
@@ -1141,6 +1148,79 @@ import { resolvePromptToCss } from './quick-render-jev';
           max-width: calc(100vw - 70px);
           bottom: max(56px, calc(env(safe-area-inset-bottom, 12px) + 48px));
         }
+
+        /* Agent live status indicator styles */
+        .agent-status-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          height: 26px;
+          padding: 0 10px;
+          border-radius: 9999px;
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 0.01em;
+          white-space: nowrap;
+          pointer-events: auto;
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+          animation: statusPillFadeIn 0.2s ease-out;
+        }
+        @keyframes statusPillFadeIn {
+          from { opacity: 0; transform: scale(0.92); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        .agent-status-pill.status-working {
+          background: rgba(37, 99, 235, 0.22);
+          border: 1px solid rgba(59, 130, 246, 0.5);
+          color: #93c5fd;
+          box-shadow: 0 0 12px rgba(37, 99, 235, 0.35);
+        }
+        .agent-status-pill.status-done {
+          background: rgba(22, 163, 74, 0.22);
+          border: 1px solid rgba(34, 197, 94, 0.5);
+          color: #86efac;
+          box-shadow: 0 0 12px rgba(34, 197, 94, 0.35);
+        }
+        .agent-status-pill.status-error {
+          background: rgba(220, 38, 38, 0.22);
+          border: 1px solid rgba(239, 68, 68, 0.5);
+          color: #fca5a5;
+        }
+        .status-spinner {
+          width: 10px;
+          height: 10px;
+          border: 2px solid rgba(147, 197, 253, 0.3);
+          border-top-color: #93c5fd;
+          border-radius: 50%;
+          animation: statusSpin 0.75s linear infinite;
+        }
+        @keyframes statusSpin {
+          to { transform: rotate(360deg); }
+        }
+        .rail-btn-send.status-working {
+          background: #2563eb !important;
+          animation: pulseSend 1.2s infinite ease-in-out;
+        }
+        .rail-btn-send.status-done {
+          background: #16a34a !important;
+        }
+        @keyframes pulseSend {
+          0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.7); }
+          70% { box-shadow: 0 0 0 8px rgba(37, 99, 235, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+        }
+        @media (max-width: 640px) {
+          .agent-status-pill {
+            height: 22px;
+            padding: 0 7px;
+            font-size: 10px;
+          }
+          .agent-status-pill .status-text {
+            max-width: 100px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+        }
       </style>
 
       <canvas class="design-canvas" data-canvas></canvas>
@@ -1392,8 +1472,8 @@ import { resolvePromptToCss } from './quick-render-jev';
               ${(selections.length + marks.length) > 0 ? `<span class="rail-badge">${selections.length + marks.length}</span>` : ''}
             </button>
 
-            <button class="rail-btn rail-btn-send" data-action="submit-batch" title="Send to Agent">
-              ➤
+            <button class="rail-btn rail-btn-send ${currentAgentStatus.status === 'working' ? 'status-working' : currentAgentStatus.status === 'done' ? 'status-done' : ''}" data-action="submit-batch" title="${currentAgentStatus.status === 'working' ? escapeHtml(currentAgentStatus.message || 'Agent working...') : currentAgentStatus.status === 'done' ? 'Changes applied' : 'Send to Agent'}">
+              ${currentAgentStatus.status === 'working' ? '⚙' : currentAgentStatus.status === 'done' ? '✓' : '➤'}
             </button>
           </div>
 
@@ -1452,6 +1532,15 @@ import { resolvePromptToCss } from './quick-render-jev';
             ➤
           </button>
 
+          ${currentAgentStatus.status !== 'idle' ? `
+            <div class="agent-status-pill mobile-status-pill status-${currentAgentStatus.status}" title="${escapeHtml(currentAgentStatus.message || '')}">
+              ${currentAgentStatus.status === 'working' ? '<span class="status-spinner"></span>' : ''}
+              ${currentAgentStatus.status === 'done' ? '<span>✓</span>' : ''}
+              ${currentAgentStatus.status === 'error' ? '<span>⚠</span>' : ''}
+              <span class="status-text">${escapeHtml(currentAgentStatus.message || (currentAgentStatus.status === 'working' ? 'Working...' : 'Done'))}</span>
+            </div>
+          ` : ''}
+
           <button class="mobile-prompt-collapse-btn" data-action="toggle-prompt-bar" title="Minimize Prompt Bar">
             ▾
           </button>
@@ -1504,6 +1593,15 @@ import { resolvePromptToCss } from './quick-render-jev';
           <button class="btn-action btn-send-agent" data-action="submit-batch" title="Send to Agent (Enter)">
             ➤ Send
           </button>
+
+          ${currentAgentStatus.status !== 'idle' ? `
+            <div class="agent-status-pill status-${currentAgentStatus.status}" title="${escapeHtml(currentAgentStatus.message || '')}">
+              ${currentAgentStatus.status === 'working' ? '<span class="status-spinner"></span>' : ''}
+              ${currentAgentStatus.status === 'done' ? '<span>✓</span>' : ''}
+              ${currentAgentStatus.status === 'error' ? '<span>⚠</span>' : ''}
+              <span class="status-text">${escapeHtml(currentAgentStatus.message || (currentAgentStatus.status === 'working' ? 'Agent working...' : 'Changes applied'))}</span>
+            </div>
+          ` : ''}
 
           <div class="render-item-wrap">
             <button class="btn-action btn-quick-render btn-quick-render-ai" data-action="quick-render" data-action-ai="quick-render-ai" title="Quick Render (AI) with Jev">
@@ -1736,6 +1834,13 @@ import { resolvePromptToCss } from './quick-render-jev';
         btn.textContent = 'Submitting...';
       });
 
+      // Set agent status to working immediately
+      currentAgentStatus = {
+        status: 'working',
+        message: 'Agent working on changes...',
+        timestamp: Date.now(),
+      };
+
       // 1. Submit through SDK if present (syncs to bridge WebSocket & feedback store)
       const sdk = (globalThis as unknown as {
         __debugBridge?: {
@@ -1923,13 +2028,28 @@ import { resolvePromptToCss } from './quick-render-jev';
       manualBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         if (edits.size === 0) {
-          const orig = manualBtn.textContent;
-          manualBtn.textContent = 'No tweaks yet';
-          manualBtn.style.background = '#71717a';
+          if (selections.length === 0) {
+            const orig = manualBtn.textContent;
+            manualBtn.textContent = 'Select element first';
+            manualBtn.style.background = '#f59e0b';
+            setTimeout(() => {
+              manualBtn.textContent = orig;
+              manualBtn.style.background = '';
+            }, 1600);
+            return;
+          }
+
+          // If element is selected but no tweaks entered, auto-open tweaker popover
+          showTweaker = true;
+          showBatch = false;
+          activeInfo = null;
+          renderOverlay();
+
+          // Focus first property input in tweaker
           setTimeout(() => {
-            manualBtn.textContent = orig;
-            manualBtn.style.background = '';
-          }, 1500);
+            const firstInput = shadowRoot.querySelector<HTMLInputElement>('.tweaker-popover input[data-edit-prop]');
+            firstInput?.focus();
+          }, 50);
           return;
         }
 
@@ -2128,13 +2248,15 @@ import { resolvePromptToCss } from './quick-render-jev';
             createdAt: new Date().toISOString(),
           });
         } else if (activeTool === 'region') {
-          marks.push({
+          const regionMark: StoredMark = {
             id: `mark_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`,
             type: 'region',
             color: '#AF52DE',
             bounds: getBoundsFromPoints(dragStart, end),
             createdAt: new Date().toISOString(),
-          });
+          };
+          marks.push(regionMark);
+          captureRegionCrop(regionMark);
         } else if (activeTool === 'rect') {
           marks.push({
             id: `mark_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`,
@@ -2238,6 +2360,140 @@ import { resolvePromptToCss } from './quick-render-jev';
     }
   };
 
+  const pendingCrops = new Map<string, (filePath: string) => void>();
+
+  const onCropSaved = (msg: { cropId?: string; filePath?: string }) => {
+    if (msg.cropId && msg.filePath && pendingCrops.has(msg.cropId)) {
+      const cb = pendingCrops.get(msg.cropId);
+      pendingCrops.delete(msg.cropId);
+      cb?.(msg.filePath);
+    }
+  };
+
+  const requestSaveCrop = (
+    dataUrl: string,
+    cropId: string,
+    meta?: { kind: 'element' | 'region'; selector?: string; filename?: string }
+  ): Promise<string | null> => {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        pendingCrops.delete(cropId);
+        resolve(null);
+      }, 5000);
+
+      pendingCrops.set(cropId, (filePath: string) => {
+        clearTimeout(timeout);
+        resolve(filePath);
+      });
+
+      const msg = {
+        type: 'design_mode_save_crop',
+        cropId,
+        data: dataUrl,
+        kind: meta?.kind,
+        selector: meta?.selector,
+        filename: meta?.filename,
+        timestamp: Date.now(),
+      };
+
+      const bridge = (window as unknown as { __debugBridge?: { send?: (m: unknown) => void } }).__debugBridge;
+      if (bridge && typeof bridge.send === 'function') {
+        bridge.send(msg);
+      } else {
+        window.dispatchEvent(new CustomEvent('agent-bridge:save-crop', { detail: msg }));
+      }
+    });
+  };
+
+  const captureElementCrop = async (sel: StoredSelection): Promise<string | null> => {
+    if (sel.screenshot_path) return sel.screenshot_path;
+    const rect = sel.element.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+
+    try {
+      const cropCanvas = await html2canvas(sel.element, {
+        logging: false,
+        useCORS: true,
+        scale: Math.min(window.devicePixelRatio || 1, 2),
+        ignoreElements: (el: Element) => Boolean(el.hasAttribute && el.hasAttribute('data-agent-bridge-design-overlay')),
+      });
+
+      let finalCanvas = cropCanvas;
+      if (cropCanvas.width > 800 || cropCanvas.height > 800) {
+        const scale = Math.min(800 / cropCanvas.width, 800 / cropCanvas.height);
+        const resized = document.createElement('canvas');
+        resized.width = Math.round(cropCanvas.width * scale);
+        resized.height = Math.round(cropCanvas.height * scale);
+        const ctx = resized.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(cropCanvas, 0, 0, resized.width, resized.height);
+          finalCanvas = resized;
+        }
+      }
+
+      const dataUrl = finalCanvas.toDataURL('image/png');
+      const cropId = `crop_el_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+      const filePath = await requestSaveCrop(dataUrl, cropId, {
+        kind: 'element',
+        selector: sel.selector,
+      });
+      if (filePath) {
+        sel.screenshot_path = filePath;
+      }
+      return filePath;
+    } catch {
+      return null;
+    }
+  };
+
+  const captureRegionCrop = async (mark: StoredMark): Promise<string | null> => {
+    if (mark.screenshot_path || mark.type !== 'region' || !mark.bounds) return mark.screenshot_path || null;
+    const bounds = mark.bounds;
+    if (bounds.width === 0 || bounds.height === 0) return null;
+
+    try {
+      const cropCanvas = await html2canvas(document.body, {
+        logging: false,
+        useCORS: true,
+        scale: Math.min(window.devicePixelRatio || 1, 2),
+        x: bounds.x + window.scrollX,
+        y: bounds.y + window.scrollY,
+        width: bounds.width,
+        height: bounds.height,
+        windowWidth: window.innerWidth,
+        windowHeight: window.innerHeight,
+        scrollX: window.scrollX,
+        scrollY: window.scrollY,
+        ignoreElements: (el: Element) => Boolean(el.hasAttribute && el.hasAttribute('data-agent-bridge-design-overlay')),
+      });
+
+      let finalCanvas = cropCanvas;
+      if (cropCanvas.width > 800 || cropCanvas.height > 800) {
+        const scale = Math.min(800 / cropCanvas.width, 800 / cropCanvas.height);
+        const resized = document.createElement('canvas');
+        resized.width = Math.round(cropCanvas.width * scale);
+        resized.height = Math.round(cropCanvas.height * scale);
+        const ctx = resized.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(cropCanvas, 0, 0, resized.width, resized.height);
+          finalCanvas = resized;
+        }
+      }
+
+      const dataUrl = finalCanvas.toDataURL('image/png');
+      const cropId = `crop_reg_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+      const filePath = await requestSaveCrop(dataUrl, cropId, {
+        kind: 'region',
+      });
+      if (filePath) {
+        mark.screenshot_path = filePath;
+      }
+      return filePath;
+    } catch {
+      return null;
+    }
+  };
+
   const addSelection = (element: HTMLElement) => {
     const color = selectionPalette[colorSequence % selectionPalette.length];
     colorSequence += 1;
@@ -2253,6 +2509,7 @@ import { resolvePromptToCss } from './quick-render-jev';
     };
     selections.push(sel);
     revision += 1;
+    captureElementCrop(sel);
   };
 
   const removeSelection = (index: number) => {
@@ -2371,6 +2628,7 @@ import { resolvePromptToCss } from './quick-render-jev';
       edits: Array.from(edits.values()),
       css_diff: getComputedCssDiff(),
       prompt_text: currentPromptText,
+      agent_status: currentAgentStatus,
       artifacts: {
         screenshot_path: currentArtifacts.screenshot_path,
         page_screenshot_path: pageScreenshot,
@@ -2438,8 +2696,22 @@ import { resolvePromptToCss } from './quick-render-jev';
     }
 
     // Fallback if artifacts are not yet written:
+    const tokens = getPromptTokens(userPrompt);
+    const line1Tokens = tokens.map((t) => {
+      if (t.selection !== undefined) {
+        const sel = selections[t.selection];
+        const elPath = sel?.screenshot_path || (currentArtifacts.element_screenshot_paths && currentArtifacts.element_screenshot_paths[t.selection]);
+        return elPath || `@e${t.selection + 1}`;
+      }
+      return t.text || '';
+    }).filter(Boolean);
+
+    // If any region marks have screenshot paths, append them to line 1
+    const regionPaths = marks.filter((m) => m.type === 'region' && m.screenshot_path).map((m) => m.screenshot_path as string);
+    const line1 = [...line1Tokens, ...regionPaths].join(' ');
+
     const lines: string[] = [
-      userPrompt,
+      line1,
       '',
       `Page: ${window.location.href}`,
     ];
@@ -2447,7 +2719,8 @@ import { resolvePromptToCss } from './quick-render-jev';
     if (selections.length > 0) {
       lines.push('', `Selected Elements (${selections.length}):`);
       selections.forEach((sel, idx) => {
-        lines.push(`- Target @e${idx + 1} <${sel.element.localName}>:`);
+        const pathSuffix = sel.screenshot_path ? ` (${sel.screenshot_path})` : '';
+        lines.push(`- Target @e${idx + 1} <${sel.element.localName}>${pathSuffix}:`);
         lines.push(`  Selector: ${sel.selector}`);
         if (sel.xpath) lines.push(`  XPath: ${sel.xpath}`);
         const selEdits = Array.from(edits.values()).filter((e) => e.id.startsWith(`${idx}::`));
@@ -2467,8 +2740,9 @@ import { resolvePromptToCss } from './quick-render-jev';
     if (marks.length > 0) {
       lines.push('', `Annotations (${marks.length}):`);
       marks.forEach((m, idx) => {
+        const pathSuffix = m.screenshot_path ? ` (${m.screenshot_path})` : '';
         if (m.type === 'region' && m.bounds) {
-          lines.push(`- Mark #${idx + 1} [region]: x=${Math.round(m.bounds.x)}, y=${Math.round(m.bounds.y)}, ${Math.round(m.bounds.width)}x${Math.round(m.bounds.height)}`);
+          lines.push(`- Mark #${idx + 1} [region]${pathSuffix}: x=${Math.round(m.bounds.x)}, y=${Math.round(m.bounds.y)}, ${Math.round(m.bounds.width)}x${Math.round(m.bounds.height)}`);
         } else if (m.type === 'arrow' && m.points) {
           lines.push(`- Mark #${idx + 1} [arrow]: (${m.points[0]?.x}, ${m.points[0]?.y}) -> (${m.points[1]?.x}, ${m.points[1]?.y})`);
         } else {
@@ -2515,6 +2789,15 @@ import { resolvePromptToCss } from './quick-render-jev';
 
   const copyHandoffToClipboard = async (requestedChange?: string): Promise<HandoffResult> => {
     const promptText = (requestedChange || currentPromptText).trim() || 'Design-mode context for the selected page elements.';
+
+    // Ensure crops are captured for selections and region marks
+    try {
+      await Promise.all([
+        ...selections.filter((s) => !s.screenshot_path).map((s) => captureElementCrop(s)),
+        ...marks.filter((m) => m.type === 'region' && !m.screenshot_path).map((m) => captureRegionCrop(m)),
+      ]);
+    } catch {}
+
     const payload = getHandoffPayload(promptText);
 
     // Notify host or agent bridge
@@ -2798,7 +3081,41 @@ import { resolvePromptToCss } from './quick-render-jev';
     },
     applyLivePatch,
     clearLivePatch,
+    setAgentStatus: (statusPayload: { status: 'idle' | 'working' | 'done' | 'error'; message?: string; timestamp?: number }) => {
+      currentAgentStatus = {
+        status: statusPayload.status || 'idle',
+        message: statusPayload.message || '',
+        timestamp: statusPayload.timestamp || Date.now(),
+      };
+      if (statusPayload.status === 'done') {
+        setTimeout(() => {
+          if (currentAgentStatus.status === 'done') {
+            currentAgentStatus = { status: 'idle' };
+            renderOverlay();
+          }
+        }, 12000);
+      }
+      renderOverlay();
+      return getSnapshot();
+    },
+    getAgentStatus: () => currentAgentStatus,
+    onCropSaved,
   };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('agent-bridge:agent-status', ((e: CustomEvent) => {
+      if (e.detail && typeof e.detail === 'object') {
+        const payload = e.detail as { status: 'idle' | 'working' | 'done' | 'error'; message?: string; timestamp?: number };
+        runtimeApi.setAgentStatus(payload);
+      }
+    }) as EventListener);
+
+    window.addEventListener('agent-bridge:crop-saved', ((e: CustomEvent) => {
+      if (e.detail && typeof e.detail === 'object') {
+        onCropSaved(e.detail);
+      }
+    }) as EventListener);
+  }
 
   (globalThis as unknown as { __agentBridgeDesignMode: typeof runtimeApi }).__agentBridgeDesignMode = runtimeApi;
 })();

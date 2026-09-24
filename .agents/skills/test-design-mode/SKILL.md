@@ -112,6 +112,21 @@ When the orchestrator agent tests Design Mode, spawn a dedicated tester subagent
 }
 ```
 
+### Method 3: Live Session Interactive Inbox Watcher (Reactive Agent Turn Loop)
+
+The skill includes a dedicated inbox watcher script at `scripts/watch-inbox.mjs`.
+
+When working interactively with a developer in the browser:
+1. Orchestrator arms the skill's watcher:
+   ```bash
+   node .agents/skills/test-design-mode/scripts/watch-inbox.mjs
+   ```
+2. **Immediate Startup Check**: If there are already unprocessed pending submissions (`status: 'submitted'` in `.debug-bridge/feedback/`), the watcher processes the newest one immediately upon startup and hands control to the agent.
+3. **Live Watch**: If no pending submission exists, it listens via WebSocket (`ws://127.0.0.1:4000/ws`) and filesystem (`.debug-bridge/feedback/`) for incoming submissions.
+4. When the user clicks "Send", it extracts elements, comments, and screenshots, outputs the payload, and exits with code 0.
+5. The agent CLI automatically wakes up in a high-priority turn, displays the feedback, applies the code change, and re-arms the watcher.
+
+
 ---
 
 ## Test Suite Implementation Details

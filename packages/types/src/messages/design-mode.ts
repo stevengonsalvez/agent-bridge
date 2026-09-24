@@ -52,6 +52,7 @@ export type DesignModeMark = {
   points?: DesignModePoint[];
   text?: string;
   createdAt?: string;
+  screenshot_path?: string;
 };
 
 export type DesignModeArtifacts = {
@@ -78,6 +79,11 @@ export type DesignModeSnapshot = {
   css_diff: string;
   prompt_text?: string;
   artifacts?: DesignModeArtifacts;
+  agent_status?: {
+    status: AgentStatus;
+    message?: string;
+    timestamp?: number;
+  };
 };
 
 export type DesignModeHandoffPayload = {
@@ -106,3 +112,32 @@ export type InteractiveElementRef = {
   disabled?: boolean;
   value?: string;
 };
+
+export type AgentStatus = 'idle' | 'working' | 'done' | 'error';
+
+export type AgentStatusUpdateMessage = {
+  type: 'agent_status_update';
+  status: AgentStatus;
+  message?: string;
+  batchId?: string;
+  timestamp?: number;
+};
+
+export type DesignModeSaveCropMessage = {
+  type: 'design_mode_save_crop';
+  cropId?: string;
+  data: string; // base64 data url
+  kind?: 'element' | 'region';
+  selector?: string;
+  bounds?: DesignModeRect;
+  filename?: string;
+  timestamp?: number;
+};
+
+export type DesignModeCropSavedMessage = {
+  type: 'design_mode_crop_saved';
+  cropId?: string;
+  filePath: string;
+  timestamp: number;
+};
+
