@@ -36,7 +36,7 @@ import html2canvas from 'html2canvas-pro';
   const sensitiveAutocompletePattern = /(?:current-password|new-password|one-time-code|cc-number|cc-csc)/i;
   const redactedValue = '<redacted>';
 
-  type Tool = 'interact' | 'select' | 'pen' | 'rect' | 'arrow' | 'region';
+  type Tool = 'interact' | 'select' | 'pen' | 'rect' | 'arrow' | 'region' | 'highlight' | 'text';
 
   type StoredEdit = {
     id: string;
@@ -64,10 +64,11 @@ import html2canvas from 'html2canvas-pro';
 
   type StoredMark = {
     id: string;
-    type: 'rect' | 'region' | 'arrow' | 'pen';
+    type: 'rect' | 'region' | 'arrow' | 'pen' | 'highlight' | 'text';
     color: string;
     points?: StoredPoint[];
     bounds?: { x: number; y: number; width: number; height: number };
+    text?: string;
     createdAt: string;
     screenshot_path?: string;
   };
@@ -119,6 +120,65 @@ import html2canvas from 'html2canvas-pro';
   const marks: StoredMark[] = [];
   const edits = new Map<string, StoredEdit>();
   let currentArtifacts: ArtifactPaths = {};
+  const agentSuggestions: Array<{ id: string; comment?: string; patchHint?: string; status?: string; [key: string]: unknown }> = [];
+
+  const syncMarkToSdk = (m: StoredMark) => {
+    try {
+      const sdk = (globalThis as unknown as {
+        __debugBridge?: {
+          feedback?: {
+            addMark?: (mark: any) => void;
+            getCurrentItem?: () => { marks?: any[] };
+          };
+        };
+      }).__debugBridge?.feedback;
+      if (sdk?.addMark) {
+        sdk.addMark({
+          id: m.id,
+          type: m.type,
+          author: 'user',
+          createdAt: m.createdAt,
+          color: m.color,
+          strokeWidth: 3,
+          bounds: m.bounds,
+          points: m.points,
+          text: m.text,
+          opacity: m.type === 'highlight' ? 0.25 : 1,
+        });
+      }
+    } catch {}
+  };
+
+  const syncElementToSdk = (el: HTMLElement) => {
+    try {
+      const sdk = (globalThis as unknown as {
+        __debugBridge?: {
+          feedback?: {
+            captureElementTarget?: (el: Element) => any;
+            addMark?: (mark: any, target?: any) => void;
+          };
+        };
+      }).__debugBridge?.feedback;
+      if (sdk?.captureElementTarget) {
+        const target = sdk.captureElementTarget(el);
+        if (sdk.addMark && target?.bounds) {
+          sdk.addMark(
+            {
+              id: `mark_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`,
+              type: 'highlight',
+              author: 'user',
+              createdAt: new Date().toISOString(),
+              color: '#facc15',
+              strokeWidth: 3,
+              opacity: 0.25,
+              bounds: target.bounds,
+            },
+            target
+          );
+        }
+      }
+    } catch {}
+  };
 
   const escapeHtml = (str: string): string => {
     return str
@@ -1312,17 +1372,21 @@ import html2canvas from 'html2canvas-pro';
       ` : ''}
 
       ${showBatch ? `
-        <div class="batch-popover">
+        <aside class="batch-popover" data-feedback-panel>
           <div class="popover-header">
-            <div class="popover-title">Batch Review (${selections.length + marks.length} item${selections.length + marks.length === 1 ? '' : 's'})</div>
-            <button class="btn-icon" data-action="close-batch" style="width:20px;height:20px;">&times;</button>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <div class="popover-title">Batch Review (${selections.length + marks.length} item${selections.length + marks.length === 1 ? '' : 's'})</div>
+              <button class="batch-tab-btn active" data-tab="Batch" style="padding:1px 6px;font-size:10px;border-radius:4px;border:none;background:#2563eb;color:#fff;cursor:pointer;">Batch</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <button class="btn-icon" data-action="collapse" title="Collapse batch panel" style="width:20px;height:20px;">▾</button>
+              <button class="btn-icon" data-action="close-batch" title="Close batch" style="width:20px;height:20px;">&times;</button>
+            </div>
           </div>
 
           <div class="batch-section">
-            <div class="batch-label">Change Description</div>
-            <div class="batch-text">
-              ${currentPromptText ? escapeHtml(currentPromptText) : '<span class="batch-empty">No prompt description entered.</span>'}
-            </div>
+            <div class="batch-label">Comment / Prompt</div>
+            <textarea class="prompt-field" data-agent-prompt data-comment placeholder="Describe change or correction" style="width:100%;box-sizing:border-box;background:#27272a;border:1px solid #3f3f46;color:#f4f4f5;border-radius:6px;padding:6px;font-size:11px;resize:vertical;min-height:48px;">${escapeHtml(currentPromptText)}</textarea>
           </div>
 
           <div class="batch-section">
@@ -1349,15 +1413,34 @@ import html2canvas from 'html2canvas-pro';
                 ${marks.map((m) => `
                   <div class="batch-item">
                     <div class="batch-item-left">
-                      <span style="color:${m.color};">${m.type === 'region' ? '◰' : m.type === 'arrow' ? '↗' : '✏'}</span>
+                      <span style="color:${m.color};">${m.type === 'region' ? '◰' : m.type === 'arrow' ? '↗' : m.type === 'highlight' ? '▨' : m.type === 'text' ? 'T' : '✏'}</span>
                       <span style="font-weight:600;text-transform:capitalize;">${m.type}</span>
                     </div>
-                    <span class="batch-item-detail">${m.type === 'pen' ? `${m.points?.length ?? 0} points` : `${Math.round(m.bounds?.width ?? 0)}x${Math.round(m.bounds?.height ?? 0)}px`}</span>
+                    <span class="batch-item-detail">${m.type === 'pen' ? `${m.points?.length ?? 0} points` : m.type === 'text' ? (m.text || 'label') : `${Math.round(m.bounds?.width ?? 0)}x${Math.round(m.bounds?.height ?? 0)}px`}</span>
                   </div>
                 `).join('')}
               </div>
             `}
           </div>
+
+          ${agentSuggestions.length > 0 ? `
+            <div class="batch-section">
+              <div class="batch-label">Agent Visual Suggestions (${agentSuggestions.length})</div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                ${agentSuggestions.map((s) => `
+                  <article class="thread-card" data-suggestion-card="${s.id}" style="background:#27272a;border:1px solid #3f3f46;border-radius:6px;padding:8px;">
+                    <strong style="color:#f4f4f5;font-size:11.5px;display:block;">${escapeHtml(s.comment || 'Visual Suggestion')}</strong>
+                    ${s.patchHint ? `<p style="color:#a1a1aa;font-size:11px;margin:4px 0;">${escapeHtml(s.patchHint)}</p>` : ''}
+                    <small style="color:#71717a;font-size:10px;">Status: ${escapeHtml(s.status || 'proposed')}</small>
+                    <div style="display:flex;gap:6px;margin-top:6px;">
+                      <button class="btn-action" data-action="accept-suggestion" data-suggestion-id="${s.id}" style="background:#16a34a;color:#fff;border:none;border-radius:4px;padding:2px 8px;font-size:10.5px;font-weight:600;cursor:pointer;">Accept</button>
+                      <button class="btn-action" data-action="reject-suggestion" data-suggestion-id="${s.id}" style="background:#dc2626;color:#fff;border:none;border-radius:4px;padding:2px 8px;font-size:10.5px;font-weight:600;cursor:pointer;">Reject</button>
+                    </div>
+                  </article>
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
 
           ${diff ? `
             <div class="batch-section">
@@ -1373,11 +1456,11 @@ import html2canvas from 'html2canvas-pro';
             <button class="btn-copy-batch" data-action="copy-prompt-btn" title="Copy formatted prompt to clipboard (Cmd+V)">
               📋 Copy Prompt
             </button>
-            <button class="btn-submit-batch" data-action="submit-batch" title="Submit Batch to Agent">
+            <button class="btn-submit-batch" data-action="submit-batch" data-action-submit="true" title="Submit Batch to Agent">
               Submit Batch to Agent
             </button>
           </div>
-        </div>
+        </aside>
       ` : ''}
 
       ${activeInfo === 'ai' ? `
@@ -1461,7 +1544,7 @@ import html2canvas from 'html2canvas-pro';
       ` : ''}
 
       ${isVerticalMode() ? `
-        <div class="floating-palette layout-vertical dock-${verticalDockSide}">
+        <div class="floating-palette layout-vertical dock-${verticalDockSide}" data-feedback-toolbar>
           <div class="rail-group rail-tools">
             <button class="rail-btn ${activeTool === 'select' ? 'active' : ''}" data-tool="select" title="Select Element (pointer)">
               <svg viewBox="0 0 24 24"><path d="M4 3l15 9-7 2-3 7L4 3z"/></svg>
@@ -1475,8 +1558,17 @@ import html2canvas from 'html2canvas-pro';
             <button class="rail-btn ${activeTool === 'region' ? 'active' : ''}" data-tool="region" title="Region Box">
               <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/></svg>
             </button>
+            <button class="rail-btn ${activeTool === 'rect' ? 'active' : ''}" data-tool="rect" title="Rectangle Box">
+              <svg viewBox="0 0 24 24"><path d="M19 4H5c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H5V6h14v12z"/></svg>
+            </button>
+            <button class="rail-btn ${activeTool === 'highlight' ? 'active' : ''}" data-tool="highlight" title="Highlight Box">
+              <svg viewBox="0 0 24 24"><path d="M6 14l3 3v5h6v-5l3-3V9H6v5zm2-3h8v2.17l-2 2V19h-4v-2.83l-2-2V11zM11 2h2v4h-2V2z"/></svg>
+            </button>
             <button class="rail-btn ${activeTool === 'arrow' ? 'active' : ''}" data-tool="arrow" title="Draw Arrow">
               <svg viewBox="0 0 24 24"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg>
+            </button>
+            <button class="rail-btn ${activeTool === 'text' ? 'active' : ''}" data-tool="text" title="Text Label">
+              <svg viewBox="0 0 24 24"><path d="M5 4v3h5.5v12h3V7H19V4H5z"/></svg>
             </button>
           </div>
 
@@ -1503,13 +1595,14 @@ import html2canvas from 'html2canvas-pro';
               </button>
             ` : ''}
 
-            <button class="rail-btn rail-btn-action ${showBatch ? 'active' : ''}" data-action="toggle-batch" title="View Current Batch">
+            <button class="rail-btn rail-btn-action pill ${showBatch ? 'active' : ''}" data-feedback-pill data-action="toggle-batch" title="View Current Batch">
               📋
               ${(selections.length + marks.length) > 0 ? `<span class="rail-badge">${selections.length + marks.length}</span>` : ''}
             </button>
 
-            <button class="rail-btn rail-btn-send ${currentAgentStatus.status === 'working' ? 'status-working' : currentAgentStatus.status === 'done' ? 'status-done' : ''}" data-action="submit-batch" title="${currentAgentStatus.status === 'working' ? escapeHtml(currentAgentStatus.message || 'Agent working...') : currentAgentStatus.status === 'done' ? 'Changes applied' : 'Send to Agent'}">
-              ${currentAgentStatus.status === 'working' ? '⚙' : currentAgentStatus.status === 'done' ? '✓' : '➤'}
+            <button class="rail-btn rail-btn-send ${currentAgentStatus.status === 'working' ? 'status-working' : currentAgentStatus.status === 'done' ? 'status-done' : ''}" data-action="submit-batch" data-action-submit="true" title="${currentAgentStatus.status === 'working' ? escapeHtml(currentAgentStatus.message || 'Agent working...') : currentAgentStatus.status === 'done' ? 'Changes applied' : 'Send to Agent'}">
+              <span aria-hidden="true">${currentAgentStatus.status === 'working' ? '⚙' : currentAgentStatus.status === 'done' ? '✓' : '➤'}</span>
+              <span class="sr-only" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">${currentAgentStatus.status === 'working' ? 'Submitting...' : currentAgentStatus.status === 'done' ? 'Sent' : 'Send'}</span>
             </button>
           </div>
 
@@ -1550,7 +1643,7 @@ import html2canvas from 'html2canvas-pro';
 
               ${marks.map((m, idx) => `
                 <div class="chip" style="--chip-color: ${m.color};" data-mark-chip="${idx}">
-                  <span class="chip-icon">${m.type === 'region' ? '◰' : m.type === 'arrow' ? '↗' : '✏'}</span>
+                  <span class="chip-icon">${m.type === 'region' ? '◰' : m.type === 'arrow' ? '↗' : m.type === 'highlight' ? '▨' : m.type === 'text' ? 'T' : '✏'}</span>
                   <span>${m.type}</span>
                   <button class="chip-remove" data-remove-mark="${idx}" title="Remove">&times;</button>
                 </div>
@@ -1558,14 +1651,15 @@ import html2canvas from 'html2canvas-pro';
             </div>
           ` : ''}
 
-          <input type="text" class="prompt-field mobile-prompt-input" data-agent-prompt placeholder="Describe the change" value="${escapeHtml(currentPromptText)}" />
+          <input type="text" class="prompt-field mobile-prompt-input" data-agent-prompt ${showBatch ? '' : 'data-comment'} placeholder="Describe the change" value="${escapeHtml(currentPromptText)}" />
 
           <button class="btn-copy-prompt mobile-copy-btn" data-action="copy-prompt-btn" title="Copy formatted prompt to clipboard (Cmd+V)">
             <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
           </button>
 
-          <button class="btn-action btn-send-agent mobile-send-btn" data-action="submit-batch" title="Send to Agent (Enter)">
-            ➤
+          <button class="btn-action btn-send-agent mobile-send-btn" data-action="submit-batch" data-action-submit="true" title="Send to Agent (Enter)">
+            <span aria-hidden="true">➤</span>
+            <span class="sr-only" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">${currentAgentStatus.status === 'working' ? 'Submitting...' : currentAgentStatus.status === 'done' ? 'Sent' : 'Send'}</span>
           </button>
 
           ${currentAgentStatus.status !== 'idle' ? `
@@ -1582,7 +1676,7 @@ import html2canvas from 'html2canvas-pro';
           </button>
         </div>
       ` : `
-        <div class="floating-palette">
+        <div class="floating-palette" data-feedback-toolbar>
           <div class="mode-group">
             <button class="mode-btn ${activeTool === 'interact' ? 'active' : ''}" data-tool="interact" title="Interact / Browse (Escape to toggle) - Click inputs, type, navigate">
               <svg viewBox="0 0 24 24"><path d="M9 11.24V7.5C9 6.12 10.12 5 11.5 5S14 6.12 14 7.5v3.74c1.21-.81 2-2.18 2-3.74C16 5.01 13.99 3 11.5 3S7 5.01 7 7.5c0 1.56.79 2.93 2 3.74zm9.84 4.63l-4.54-2.26c-.17-.07-.35-.11-.54-.11H13v-6c0-.83-.67-1.5-1.5-1.5S10 6.67 10 7.5v10.74l-3.43-.72c-.08-.01-.15-.02-.24-.02-.31 0-.59.13-.79.33l-.79.8 4.94 4.94c.27.27.65.43 1.06.43h6.79c.75 0 1.33-.55 1.44-1.28l.75-5.27c.01-.07.01-.14.01-.21 0-.61-.38-1.16-.95-1.34z"/></svg>
@@ -1597,8 +1691,17 @@ import html2canvas from 'html2canvas-pro';
             <button class="mode-btn ${activeTool === 'region' ? 'active' : ''}" data-tool="region" title="Region Box">
               <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/></svg>
             </button>
+            <button class="mode-btn ${activeTool === 'rect' ? 'active' : ''}" data-tool="rect" title="Rectangle Box">
+              <svg viewBox="0 0 24 24"><path d="M19 4H5c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H5V6h14v12z"/></svg>
+            </button>
+            <button class="mode-btn ${activeTool === 'highlight' ? 'active' : ''}" data-tool="highlight" title="Highlight Box">
+              <svg viewBox="0 0 24 24"><path d="M6 14l3 3v5h6v-5l3-3V9H6v5zm2-3h8v2.17l-2 2V19h-4v-2.83l-2-2V11zM11 2h2v4h-2V2z"/></svg>
+            </button>
             <button class="mode-btn ${activeTool === 'arrow' ? 'active' : ''}" data-tool="arrow" title="Draw Arrow">
               <svg viewBox="0 0 24 24"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg>
+            </button>
+            <button class="mode-btn ${activeTool === 'text' ? 'active' : ''}" data-tool="text" title="Text Label">
+              <svg viewBox="0 0 24 24"><path d="M5 4v3h5.5v12h3V7H19V4H5z"/></svg>
             </button>
           </div>
 
@@ -1613,21 +1716,24 @@ import html2canvas from 'html2canvas-pro';
 
             ${marks.map((m, idx) => `
               <div class="chip" style="--chip-color: ${m.color};" data-mark-chip="${idx}">
-                <span class="chip-icon">${m.type === 'region' ? '◰' : m.type === 'arrow' ? '↗' : '✏'}</span>
+                <span class="chip-icon">${m.type === 'region' ? '◰' : m.type === 'arrow' ? '↗' : m.type === 'highlight' ? '▨' : m.type === 'text' ? 'T' : '✏'}</span>
                 <span>${m.type}</span>
                 <button class="chip-remove" data-remove-mark="${idx}" title="Remove">&times;</button>
               </div>
             `).join('')}
           </div>
 
-          <input type="text" class="prompt-field" data-agent-prompt placeholder="Describe the change" value="${escapeHtml(currentPromptText)}" />
+          <input type="text" class="prompt-field" data-agent-prompt ${showBatch ? '' : 'data-comment'} placeholder="Describe the change" value="${escapeHtml(currentPromptText)}" />
 
           <button class="btn-copy-prompt" data-action="copy-prompt-btn" title="Copy formatted prompt to clipboard (Cmd+V)">
             <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
           </button>
 
-          <button class="btn-action btn-send-agent" data-action="submit-batch" title="Send to Agent (Enter)">
+          <button class="btn-action btn-send-agent" data-action="submit" data-action-submit="true" title="Send to Agent (Enter)">
             ➤ Send
+          </button>
+          <button class="btn-action btn-send-agent-compat" data-action="submit-batch" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;" tabindex="-1" aria-hidden="true">
+            Send
           </button>
 
           ${currentAgentStatus.status !== 'idle' ? `
@@ -1659,7 +1765,7 @@ import html2canvas from 'html2canvas-pro';
             </button>
           ` : ''}
 
-          <button class="btn-action btn-batch" data-action="toggle-batch" title="View Current Batch">
+          <button class="btn-action btn-batch pill" data-feedback-pill data-action="toggle-batch" title="View Current Batch">
             📋 Batch <span class="batch-count-badge">${selections.length + marks.length}</span>
           </button>
 
@@ -1719,6 +1825,10 @@ import html2canvas from 'html2canvas-pro';
         const last = currentPoints[currentPoints.length - 1];
         const bounds = getBoundsFromPoints(dragStart, last);
         drawRectBox(ctx, bounds, '#0A84FF');
+      } else if (activeTool === 'highlight' && currentPoints.length > 0) {
+        const last = currentPoints[currentPoints.length - 1];
+        const bounds = getBoundsFromPoints(dragStart, last);
+        drawHighlightBox(ctx, bounds, '#facc15');
       } else if (activeTool === 'arrow' && currentPoints.length > 0) {
         const last = currentPoints[currentPoints.length - 1];
         drawArrow(ctx, dragStart, last, '#0A84FF', 3);
@@ -1742,9 +1852,33 @@ import html2canvas from 'html2canvas-pro';
       drawRegionBox(ctx, mark.bounds, mark.color);
     } else if (mark.type === 'rect' && mark.bounds) {
       drawRectBox(ctx, mark.bounds, mark.color);
+    } else if (mark.type === 'highlight' && mark.bounds) {
+      drawHighlightBox(ctx, mark.bounds, mark.color || '#facc15');
     } else if (mark.type === 'arrow' && mark.points && mark.points.length >= 2) {
       drawArrow(ctx, mark.points[0], mark.points[mark.points.length - 1], mark.color, 3);
+    } else if (mark.type === 'text' && mark.text && mark.points && mark.points[0]) {
+      drawText(ctx, mark.points[0], mark.text, mark.color || '#111827');
     }
+  };
+
+  const drawHighlightBox = (ctx: CanvasRenderingContext2D, bounds: { x: number; y: number; width: number; height: number }, color = '#facc15') => {
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.25;
+    ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.8;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
+    ctx.restore();
+  };
+
+  const drawText = (ctx: CanvasRenderingContext2D, point: StoredPoint, text: string, color = '#111827') => {
+    ctx.save();
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.fillStyle = color;
+    ctx.fillText(text, point.x, point.y);
+    ctx.restore();
   };
 
   const drawPolyline = (ctx: CanvasRenderingContext2D, points: StoredPoint[], color: string, width: number) => {
@@ -1889,7 +2023,8 @@ import html2canvas from 'html2canvas-pro';
 
       if (sdk) {
         try {
-          if (sdk.addItem) {
+          const batch = (sdk as any).getBatch?.();
+          if ((!batch || !batch.items || batch.items.length === 0) && sdk.addItem) {
             sdk.addItem({
               comment: currentPromptText || 'UI Change Request',
               target: selections[0] ? {
@@ -1909,7 +2044,8 @@ import html2canvas from 'html2canvas-pro';
       // 2. Generate screenshot artifacts, inject terminal, and copy prompt
       const handoff = await copyHandoffToClipboard(currentPromptText);
 
-      allSubmitBtns.forEach((btn) => {
+      const currentSubmitBtns = shadowRoot?.querySelectorAll<HTMLButtonElement>('[data-action="submit-batch"], [data-action="submit"]') || [];
+      currentSubmitBtns.forEach((btn) => {
         if (handoff.terminalInjected) {
           btn.textContent = '✓ Sent to Agent (Terminal)!';
           btn.style.background = '#16a34a';
@@ -1930,14 +2066,17 @@ import html2canvas from 'html2canvas-pro';
       }, 1400);
     };
 
-    // Prompt input (handles both horizontal palette and mobile companion bar)
-    shadowRoot.querySelectorAll<HTMLInputElement>('[data-agent-prompt]').forEach((promptInput) => {
+    // Prompt input (handles horizontal palette, mobile companion bar, and batch popover)
+    shadowRoot.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-agent-prompt], [data-comment]').forEach((promptInput) => {
       promptInput.addEventListener('input', () => {
         currentPromptText = promptInput.value;
+        const sdk = (globalThis as unknown as { __debugBridge?: { feedback?: { updateCurrentComment?: (c: string) => void } } }).__debugBridge?.feedback;
+        sdk?.updateCurrentComment?.(currentPromptText);
       });
-      promptInput.addEventListener('keydown', (e) => {
+      promptInput.addEventListener('keydown', (e: Event) => {
         e.stopPropagation();
-        if (e.key === 'Enter') {
+        const ke = e as KeyboardEvent;
+        if (ke.key === 'Enter' && promptInput.tagName !== 'TEXTAREA') {
           e.preventDefault();
           executeSubmit();
         }
@@ -2134,8 +2273,7 @@ import html2canvas from 'html2canvas-pro';
     });
 
     // Batch toggle
-    const batchBtn = shadowRoot.querySelector<HTMLButtonElement>('[data-action="toggle-batch"]');
-    if (batchBtn) {
+    shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="toggle-batch"], [data-feedback-pill]').forEach((batchBtn) => {
       batchBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         showBatch = !showBatch;
@@ -2145,16 +2283,47 @@ import html2canvas from 'html2canvas-pro';
         }
         renderOverlay();
       });
-    }
-
-    shadowRoot.querySelector('[data-action="close-batch"]')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      showBatch = false;
-      renderOverlay();
     });
 
-    // Submit batch buttons (both main pill and popover)
-    shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="submit-batch"]').forEach((btn) => {
+    shadowRoot.querySelectorAll('[data-action="close-batch"], [data-action="collapse"]').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showBatch = false;
+        renderOverlay();
+      });
+    });
+
+    // Suggestions accept / reject handlers
+    shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="accept-suggestion"]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.suggestionId;
+        const sdk = (globalThis as unknown as { __debugBridge?: { feedback?: { acceptSuggestion?: (sugId: string) => void } } }).__debugBridge?.feedback;
+        if (id) {
+          sdk?.acceptSuggestion?.(id);
+          const target = agentSuggestions.find((s) => s.id === id);
+          if (target) target.status = 'accepted';
+          renderOverlay();
+        }
+      });
+    });
+
+    shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="reject-suggestion"]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.suggestionId;
+        const sdk = (globalThis as unknown as { __debugBridge?: { feedback?: { rejectSuggestion?: (sugId: string) => void } } }).__debugBridge?.feedback;
+        if (id) {
+          sdk?.rejectSuggestion?.(id);
+          const target = agentSuggestions.find((s) => s.id === id);
+          if (target) target.status = 'rejected';
+          renderOverlay();
+        }
+      });
+    });
+
+    // Submit batch buttons (main pill, mobile bar, and popover)
+    shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="submit-batch"], [data-action="submit"]').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         executeSubmit();
@@ -2285,14 +2454,17 @@ import html2canvas from 'html2canvas-pro';
         const color = selectionPalette[colorSequence % selectionPalette.length];
         colorSequence += 1;
 
+        let newMark: StoredMark | null = null;
+
         if (activeTool === 'pen') {
-          marks.push({
+          newMark = {
             id: `mark_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`,
             type: 'pen',
             color,
             points: currentPoints,
             createdAt: new Date().toISOString(),
-          });
+          };
+          marks.push(newMark);
         } else if (activeTool === 'region') {
           const regionMark: StoredMark = {
             id: `mark_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`,
@@ -2301,24 +2473,53 @@ import html2canvas from 'html2canvas-pro';
             bounds: getBoundsFromPoints(dragStart, end),
             createdAt: new Date().toISOString(),
           };
+          newMark = regionMark;
           marks.push(regionMark);
           captureRegionCrop(regionMark);
         } else if (activeTool === 'rect') {
-          marks.push({
+          newMark = {
             id: `mark_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`,
             type: 'rect',
             color,
             bounds: getBoundsFromPoints(dragStart, end),
             createdAt: new Date().toISOString(),
-          });
+          };
+          marks.push(newMark);
+        } else if (activeTool === 'highlight') {
+          newMark = {
+            id: `mark_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`,
+            type: 'highlight',
+            color: '#facc15',
+            bounds: getBoundsFromPoints(dragStart, end),
+            createdAt: new Date().toISOString(),
+          };
+          marks.push(newMark);
         } else if (activeTool === 'arrow') {
-          marks.push({
+          newMark = {
             id: `mark_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`,
             type: 'arrow',
             color,
             points: [dragStart, end],
             createdAt: new Date().toISOString(),
-          });
+          };
+          marks.push(newMark);
+        } else if (activeTool === 'text') {
+          const label = window.prompt('Label') || '';
+          if (label) {
+            newMark = {
+              id: `mark_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`,
+              type: 'text',
+              color: '#111827',
+              points: [end],
+              text: label,
+              createdAt: new Date().toISOString(),
+            };
+            marks.push(newMark);
+          }
+        }
+
+        if (newMark) {
+          syncMarkToSdk(newMark);
         }
 
         dragStart = null;
@@ -2360,6 +2561,7 @@ import html2canvas from 'html2canvas-pro';
     } else {
       addSelection(target);
       activeElement = target;
+      syncElementToSdk(target);
     }
     renderOverlay();
   };
@@ -3154,6 +3356,33 @@ import html2canvas from 'html2canvas-pro';
     },
     getAgentStatus: () => currentAgentStatus,
     onCropSaved,
+    openBatch: () => {
+      showBatch = true;
+      showTweaker = false;
+      activeInfo = null;
+      renderOverlay();
+      return getSnapshot();
+    },
+    closeBatch: () => {
+      showBatch = false;
+      renderOverlay();
+      return getSnapshot();
+    },
+    addSuggestion: (s: unknown) => {
+      if (s && typeof s === 'object') {
+        const payload = s as { id: string; comment?: string; patchHint?: string; status?: string };
+        const existing = agentSuggestions.find((x) => x.id === payload.id);
+        if (!existing) {
+          agentSuggestions.push(payload);
+          showBatch = true;
+          renderOverlay();
+        }
+      }
+    },
+    render: () => {
+      renderOverlay();
+      return getSnapshot();
+    },
     setGatewayKey: (key: string) => {
       setStoredGatewayKey(key);
       renderOverlay();
@@ -3173,6 +3402,12 @@ import html2canvas from 'html2canvas-pro';
     window.addEventListener('agent-bridge:crop-saved', ((e: CustomEvent) => {
       if (e.detail && typeof e.detail === 'object') {
         onCropSaved(e.detail);
+      }
+    }) as EventListener);
+
+    window.addEventListener('agent-bridge:suggestion-added', ((e: CustomEvent) => {
+      if (e.detail && typeof e.detail === 'object') {
+        runtimeApi.addSuggestion(e.detail);
       }
     }) as EventListener);
   }

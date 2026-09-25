@@ -300,6 +300,9 @@ export class FeedbackController implements FeedbackApi {
     const index = item.suggestions.findIndex((candidate) => candidate.id === suggestion.id);
     if (index >= 0) item.suggestions[index] = suggestion;
     else item.suggestions.push(suggestion);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('agent-bridge:suggestion-added', { detail: suggestion }));
+    }
     for (const handler of this.suggestionHandlers) handler(suggestion);
     this.overlay.showThread();
   }
