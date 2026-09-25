@@ -1324,8 +1324,9 @@ button {
     gap: 0.3rem;
   }
   .logout-btn {
-    padding: 0.25rem 0.5rem;
+    padding: 0.25rem 0.65rem;
     font-size: 0.7rem;
+    border-radius: 9999px;
   }
   .pdp-container {
     padding: 0 1rem 3rem;
