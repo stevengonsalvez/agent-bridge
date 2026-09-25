@@ -243,6 +243,23 @@ export class FeedbackController implements FeedbackApi {
     this.createBatch().updatedAt = item.updatedAt;
   }
 
+  undoLastMark(): AnnotationMark | undefined {
+    const item = this.getCurrentItem();
+    const removed = item.marks.pop();
+    if (removed) {
+      item.updatedAt = new Date().toISOString();
+      this.createBatch().updatedAt = item.updatedAt;
+    }
+    return removed;
+  }
+
+  clearCurrentMarks(): void {
+    const item = this.getCurrentItem();
+    item.marks = [];
+    item.updatedAt = new Date().toISOString();
+    this.createBatch().updatedAt = item.updatedAt;
+  }
+
   clearCurrentItem(): void {
     const item = this.getCurrentItem();
     item.marks = [];
