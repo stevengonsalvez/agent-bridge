@@ -51,7 +51,11 @@ async function main() {
   const client = new Client({ name: 'feedback-mcp-validation', version: '0.1.0' });
   await client.connect(transport);
 
-  const status = structured(await client.callTool({ name: 'feedback_status', arguments: {} }));
+  let status = structured(await client.callTool({ name: 'feedback_status', arguments: {} }));
+  for (let i = 0; i < 30 && !status.connected; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    status = structured(await client.callTool({ name: 'feedback_status', arguments: {} }));
+  }
   assert(status.connected === true, 'mcp-connected-to-bridge', status.wsUrl);
 
   const browser = await chromium.launch({ headless: true });

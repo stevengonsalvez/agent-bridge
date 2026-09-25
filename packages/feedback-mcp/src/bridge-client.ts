@@ -63,6 +63,17 @@ export class BridgeFeedbackClient {
     this.ws = null;
   }
 
+  async ensureConnected(timeoutMs = 1500): Promise<boolean> {
+    const isReady = () => (this.ws?.readyState as number | undefined) === WebSocket.OPEN;
+    if (isReady()) return true;
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      if (isReady()) return true;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    return isReady();
+  }
+
   status(): { connected: boolean; wsUrl: string; events: number; latestBatchId?: string; latestDecisionId?: string } {
     return {
       connected: this.ws?.readyState === WebSocket.OPEN,
