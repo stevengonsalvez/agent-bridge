@@ -99,13 +99,12 @@ async function processBatch(batchId, sourceHint) {
           const destPng = path.join(artifactDir, `feedback-${batchId}-${item.id}.png`);
           try {
             execSync(`magick "${absRaw}" "${destPng}" 2>/dev/null || dwebp "${absRaw}" -o "${destPng}" 2>/dev/null`, { stdio: 'ignore' });
-            if (fs.existsSync(destPng)) {
-              console.log(`  Screenshot:    ${destPng}`);
-            } else {
-              console.log(`  Screenshot:    ${absRaw}`);
-            }
+            const finalImg = fs.existsSync(destPng) ? destPng : absRaw;
+            console.log(`  Screenshot:    file://${finalImg}`);
+            console.log(`  Markdown link: [View Screenshot](file://${finalImg})`);
           } catch {
-            console.log(`  Screenshot:    ${absRaw}`);
+            console.log(`  Screenshot:    file://${absRaw}`);
+            console.log(`  Markdown link: [View Screenshot](file://${absRaw})`);
           }
         }
       }
