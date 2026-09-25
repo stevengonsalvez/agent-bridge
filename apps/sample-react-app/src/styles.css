@@ -287,7 +287,7 @@ button {
   padding: 0.35rem 1rem;
   border-radius: 9999px;
   box-shadow: 0 2px 8px rgba(224, 96, 64, 0.35);
-  transition: all 0.15s ease-in-out;
+  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 
 .logout-btn:hover {
