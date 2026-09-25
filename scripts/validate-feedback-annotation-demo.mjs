@@ -73,7 +73,7 @@ function send(ws, payload) {
 }
 
 async function clickTool(page, tool) {
-  await page.locator(`[data-tool="${tool}"]`).click();
+  await page.locator(`[data-feedback-toolbar] [data-tool="${tool}"]`).click();
 }
 
 async function drag(page, from, to) {

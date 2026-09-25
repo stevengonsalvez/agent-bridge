@@ -152,7 +152,10 @@ export function createFeedbackMcpServer(options: FeedbackMcpOptions): {
       inputSchema: z.object({}),
       annotations: { readOnlyHint: true },
     },
-    async () => jsonResult(client.status()),
+    async () => {
+      await client.ensureConnected();
+      return jsonResult(client.status());
+    },
   );
 
   server.registerTool(

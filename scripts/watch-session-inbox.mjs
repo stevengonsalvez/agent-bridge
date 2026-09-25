@@ -39,8 +39,13 @@ async function processBatch(batchId, sourceHint) {
   // Broadcast working status immediately so browser widget reflects agent is working
   try {
     const scriptDir = path.dirname(new URL(import.meta.url).pathname);
-    const notifyScript = path.join(scriptDir, 'notify-status.mjs');
-    execSync(`node "${notifyScript}" --status working --msg "Agent working on feedback..." --port ${port}`, { stdio: 'ignore' });
+    let notifyScript = path.join(scriptDir, 'notify-status.mjs');
+    if (!fs.existsSync(notifyScript)) {
+      notifyScript = path.join(process.cwd(), 'skills/test-design-mode/scripts/notify-status.mjs');
+    }
+    if (fs.existsSync(notifyScript)) {
+      execSync(`node "${notifyScript}" --status working --msg "Agent working on feedback..." --port ${port}`, { stdio: 'ignore' });
+    }
   } catch {}
 
   console.log(`\n================================================================================`);

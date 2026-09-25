@@ -321,6 +321,34 @@ import html2canvas from 'html2canvas-pro';
     canvas = null;
   };
 
+  const getStoredGatewayKey = (): string => {
+    try {
+      if (typeof window !== 'undefined') {
+        const globalKey = (window as any).__agentBridgeGatewayKey;
+        if (globalKey) return globalKey;
+        const stored = window.localStorage?.getItem('__agent_bridge_gateway_key__');
+        if (stored) return stored;
+      }
+    } catch {}
+    return '';
+  };
+
+  const setStoredGatewayKey = (key: string): string => {
+    try {
+      if (typeof window !== 'undefined') {
+        const trimmed = key.trim();
+        if (trimmed) {
+          window.localStorage?.setItem('__agent_bridge_gateway_key__', trimmed);
+          (window as any).__agentBridgeGatewayKey = trimmed;
+        } else {
+          window.localStorage?.removeItem('__agent_bridge_gateway_key__');
+          delete (window as any).__agentBridgeGatewayKey;
+        }
+      }
+    } catch {}
+    return getStoredGatewayKey();
+  };
+
   const setCaptureHidden = (mode: 'none' | 'palette' | 'all') => {
     if (!overlayHost || !shadowRoot) return;
     if (mode === 'all') {
@@ -1385,6 +1413,14 @@ import html2canvas from 'html2canvas-pro';
               </div>
             </div>
           </div>
+          <div class="gateway-key-box" style="margin-top:10px;padding-top:8px;border-top:1px solid #27272a;display:flex;flex-direction:column;gap:5px;">
+            <div style="font-size:10px;font-weight:700;color:#a1a1aa;text-transform:uppercase;letter-spacing:0.04em;">TypeSafe AI / Jev API Key</div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <input type="password" data-gateway-key-input placeholder="apikey_... (or vck_...)" value="${getStoredGatewayKey()}" style="flex:1;background:#27272a;border:1px solid #3f3f46;color:#f4f4f5;border-radius:6px;padding:4px 8px;font-size:11px;font-family:monospace;" />
+              <button class="btn-action" data-action="save-gateway-key" style="background:#10b981;color:#ffffff;border:none;border-radius:6px;padding:4px 10px;font-size:10.5px;font-weight:700;cursor:pointer;">Save</button>
+            </div>
+            <div class="gateway-status" style="font-size:10px;color:${getStoredGatewayKey() ? '#4ade80' : '#71717a'};">${getStoredGatewayKey() ? (getStoredGatewayKey().startsWith('apikey_') ? '✓ TypeSafe AI direct active (<80ms)' : '✓ Gateway key active in localStorage') : 'No key set (using heuristic fallback)'}</div>
+          </div>
         </div>
       ` : ''}
 
@@ -1974,11 +2010,21 @@ import html2canvas from 'html2canvas-pro';
       });
     });
 
+    shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="save-gateway-key"]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const input = shadowRoot?.querySelector<HTMLInputElement>('[data-gateway-key-input]');
+        const val = (input?.value || '').trim();
+        setStoredGatewayKey(val);
+        renderOverlay();
+      });
+    });
+
     // Quick render AI buttons
     shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="quick-render"], [data-action="quick-render-ai"]').forEach((quickRenderBtn) => {
       quickRenderBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const promptInput = shadowRoot.querySelector<HTMLInputElement>('[data-agent-prompt]');
+        const promptInput = shadowRoot?.querySelector<HTMLInputElement>('[data-agent-prompt]');
         if (promptInput && promptInput.value !== undefined) {
           currentPromptText = promptInput.value;
         }
@@ -2047,7 +2093,7 @@ import html2canvas from 'html2canvas-pro';
 
           // Focus first property input in tweaker
           setTimeout(() => {
-            const firstInput = shadowRoot.querySelector<HTMLInputElement>('.tweaker-popover input[data-edit-prop]');
+            const firstInput = shadowRoot?.querySelector<HTMLInputElement>('.tweaker-popover input[data-edit-prop]');
             firstInput?.focus();
           }, 50);
           return;
@@ -2295,6 +2341,13 @@ import html2canvas from 'html2canvas-pro';
 
   const handleClick = (e: MouseEvent) => {
     if (!enabled || activeTool !== 'select') return;
+    if (!e.isTrusted) return;
+    if ((e as any).__agentBridgeCommand) return;
+    let checkEl: Element | null = e.target as Element | null;
+    while (checkEl) {
+      if ((checkEl as any).__agentBridgeClicking) return;
+      checkEl = checkEl.parentElement;
+    }
     const target = e.target as HTMLElement | null;
     if (!target || overlayHost?.contains(target)) return;
 
@@ -2802,16 +2855,17 @@ import html2canvas from 'html2canvas-pro';
 
     // Notify host or agent bridge
     window.dispatchEvent(new CustomEvent('agent-bridge:handoff', { detail: payload }));
-    let hostResult: {
+    type HostHandoffResult = {
       success?: boolean;
       terminalInjection?: { success: boolean; method: string; target?: string; error?: string };
-    } | null = null;
+    };
+    let hostResult: HostHandoffResult | null = null;
     const host = (window as unknown as { __agentBridgeHost?: (msg: unknown) => Promise<unknown> | void }).__agentBridgeHost;
     if (typeof host === 'function') {
       try {
         const res = await host({ type: 'design_mode_handoff', payload });
         if (res && typeof res === 'object') {
-          hostResult = res as typeof hostResult;
+          hostResult = res as HostHandoffResult;
         }
       } catch {}
     }
@@ -3100,6 +3154,12 @@ import html2canvas from 'html2canvas-pro';
     },
     getAgentStatus: () => currentAgentStatus,
     onCropSaved,
+    setGatewayKey: (key: string) => {
+      setStoredGatewayKey(key);
+      renderOverlay();
+      return getStoredGatewayKey();
+    },
+    getGatewayKey: () => getStoredGatewayKey(),
   };
 
   if (typeof window !== 'undefined') {

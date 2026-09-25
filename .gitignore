@@ -12,7 +12,7 @@ coverage/
 
 # Logs and session artifacts
 logs/
-.debug-bridge/feedback/
+.debug-bridge/
 .tmux-dev-session.json
 recordings/
 

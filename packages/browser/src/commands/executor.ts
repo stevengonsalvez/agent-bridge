@@ -211,7 +211,21 @@ export class CommandExecutor {
 
   private click(target: { stableId?: string; selector?: string; text?: string }): void {
     const el = this.resolveTarget(target);
-    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true }));
+    (el as any).__agentBridgeClicking = true;
+    try {
+      const event = new MouseEvent('click', { bubbles: true, cancelable: true, composed: true });
+      (event as any).__agentBridgeCommand = true;
+      el.dispatchEvent(event);
+      if (typeof (el as HTMLElement).click === 'function' && el.tagName === 'A') {
+        (el as HTMLElement).click();
+      }
+    } finally {
+      setTimeout(() => {
+        try {
+          delete (el as any).__agentBridgeClicking;
+        } catch {}
+      }, 50);
+    }
   }
 
   private type(
