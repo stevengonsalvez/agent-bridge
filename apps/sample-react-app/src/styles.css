@@ -283,14 +283,16 @@ button {
   background: #e06040;
   color: #ffffff;
   font-size: 0.75rem;
-  font-weight: 600;
-  padding: 0.25rem 0.75rem;
+  font-weight: 700;
+  padding: 0.35rem 1rem;
   border-radius: 9999px;
-  transition: background 0.15s;
+  box-shadow: 0 2px 8px rgba(224, 96, 64, 0.35);
+  transition: all 0.15s ease-in-out;
 }
 
 .logout-btn:hover {
   background: #c2410c;
+  transform: translateY(-1px);
 }
 
 .login-link {
