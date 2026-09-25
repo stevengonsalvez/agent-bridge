@@ -339,13 +339,51 @@ function createHumanFormatter(): OutputFormatter {
       } else if (msg.type === 'browser_network_failed') {
         const failed = msg as BrowserNetworkFailedMessage;
         console.log(`   [cdp] failed ${truncate(failed.url ?? failed.requestId, 60)}: ${failed.errorText}`);
+      } else if (msg.type === 'browser_design_mode_submit') {
+        const submit = msg as any;
+        console.log('\n' + '─'.repeat(74));
+        console.log('🎨 [Agent Bridge] DESIGN MODE SUBMISSION RECEIVED');
+        console.log('─'.repeat(74));
+        console.log(`  Prompt:    "${submit.prompt?.split('\n')[0] || '(no prompt)'}"`);
+        console.log(`  Page URL:  ${submit.url || 'http://localhost:5173/'}`);
+        if (submit.terminalInjection?.success) {
+          console.log(`  Terminal:  ✓ Injected into ${submit.terminalInjection.method} target: ${submit.terminalInjection.target}`);
+        } else {
+          console.log(`  Handoff:   📋 Formatted prompt generated for clipboard / agent REPL`);
+        }
+        if (submit.cropPaths?.length) {
+          console.log(`  Crops (${submit.cropPaths.length}):`);
+          submit.cropPaths.forEach((cp: string, idx: number) => {
+            console.log(`    [${idx + 1}] ${cp}`);
+          });
+        }
+        console.log('─'.repeat(74) + '\n');
       } else if (msg.type === 'ui_feedback_batch_created' || msg.type === 'ui_feedback_batch_updated') {
         const feedback = msg as UiFeedbackBatchCreatedMessage;
-        console.log(
-          `[feedback] batch ${feedback.batchId} (${feedback.itemCount} item${feedback.itemCount === 1 ? '' : 's'})`
-        );
-        console.log(`  summary: ${feedback.summaryPath}`);
-        console.log(`  batch: ${feedback.batchPath}`);
+        console.log('\n' + '━'.repeat(74));
+        console.log(`🎨 [Agent Bridge] DESIGN MODE FEEDBACK: ${feedback.batchId} (${feedback.itemCount} item${feedback.itemCount === 1 ? '' : 's'})`);
+        console.log('━'.repeat(74));
+        try {
+          if (feedback.batchPath && fs.existsSync(feedback.batchPath)) {
+            const raw = fs.readFileSync(feedback.batchPath, 'utf8');
+            const data = JSON.parse(raw);
+            if (data.items?.length) {
+              data.items.forEach((item: any, i: number) => {
+                console.log(`  Item #${i + 1}:   "${item.comment || '(no prompt)'}"`);
+                if (item.target) {
+                  console.log(`    Target:  <${item.target.tagName || 'element'}> ${item.target.selector || ''}`);
+                }
+                const crop = item.annotated?.path || item.screenshot?.path;
+                if (crop) {
+                  console.log(`    Crop:    ${crop}`);
+                }
+              });
+            }
+          }
+        } catch {}
+        console.log(`  Summary:   ${feedback.summaryPath}`);
+        console.log(`  Batch:     ${feedback.batchPath}`);
+        console.log('━'.repeat(74) + '\n');
       } else if (msg.type === 'ui_feedback_suggestion_decision') {
         const decision = msg as UiFeedbackSuggestionDecisionMessage;
         console.log(
