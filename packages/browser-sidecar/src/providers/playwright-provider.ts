@@ -11,7 +11,7 @@ import type {
 } from 'debug-bridge-types';
 import { ProfileStore } from '../profiles/profile-store';
 import { exportStorageState, importStorageState } from '../profiles/storage-state';
-import { injectPromptToTerminal, type TmuxInjectionResult } from '../terminal/tmux-injector';
+import { injectPromptToTerminal } from '../terminal/tmux-injector';
 
 type SendMessage = (msg: Record<string, unknown> & { type: string }) => void;
 
@@ -555,7 +555,7 @@ export class PlaywrightProvider {
           this.options.send({
             type: 'browser_design_mode_submit',
             providerId: this.options.providerId,
-            targetId: target.ref.id,
+            targetId: target.id,
             url: target.page.url(),
             prompt: artifacts.prompt,
             requestedChange: change,

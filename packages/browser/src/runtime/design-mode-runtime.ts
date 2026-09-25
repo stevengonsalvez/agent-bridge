@@ -2024,7 +2024,7 @@ import html2canvas from 'html2canvas-pro';
     shadowRoot.querySelectorAll<HTMLButtonElement>('[data-action="quick-render"], [data-action="quick-render-ai"]').forEach((quickRenderBtn) => {
       quickRenderBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const promptInput = shadowRoot.querySelector<HTMLInputElement>('[data-agent-prompt]');
+        const promptInput = shadowRoot?.querySelector<HTMLInputElement>('[data-agent-prompt]');
         if (promptInput && promptInput.value !== undefined) {
           currentPromptText = promptInput.value;
         }
@@ -2093,7 +2093,7 @@ import html2canvas from 'html2canvas-pro';
 
           // Focus first property input in tweaker
           setTimeout(() => {
-            const firstInput = shadowRoot.querySelector<HTMLInputElement>('.tweaker-popover input[data-edit-prop]');
+            const firstInput = shadowRoot?.querySelector<HTMLInputElement>('.tweaker-popover input[data-edit-prop]');
             firstInput?.focus();
           }, 50);
           return;
@@ -2341,6 +2341,13 @@ import html2canvas from 'html2canvas-pro';
 
   const handleClick = (e: MouseEvent) => {
     if (!enabled || activeTool !== 'select') return;
+    if (!e.isTrusted) return;
+    if ((e as any).__agentBridgeCommand) return;
+    let checkEl: Element | null = e.target as Element | null;
+    while (checkEl) {
+      if ((checkEl as any).__agentBridgeClicking) return;
+      checkEl = checkEl.parentElement;
+    }
     const target = e.target as HTMLElement | null;
     if (!target || overlayHost?.contains(target)) return;
 
@@ -2848,16 +2855,17 @@ import html2canvas from 'html2canvas-pro';
 
     // Notify host or agent bridge
     window.dispatchEvent(new CustomEvent('agent-bridge:handoff', { detail: payload }));
-    let hostResult: {
+    type HostHandoffResult = {
       success?: boolean;
       terminalInjection?: { success: boolean; method: string; target?: string; error?: string };
-    } | null = null;
+    };
+    let hostResult: HostHandoffResult | null = null;
     const host = (window as unknown as { __agentBridgeHost?: (msg: unknown) => Promise<unknown> | void }).__agentBridgeHost;
     if (typeof host === 'function') {
       try {
         const res = await host({ type: 'design_mode_handoff', payload });
         if (res && typeof res === 'object') {
-          hostResult = res as typeof hostResult;
+          hostResult = res as HostHandoffResult;
         }
       } catch {}
     }
