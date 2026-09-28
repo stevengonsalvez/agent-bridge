@@ -284,10 +284,14 @@ button {
   color: #ffffff;
   font-size: 0.75rem;
   font-weight: 700;
-  padding: 0.35rem 1rem;
-  border-radius: 9999px;
+  padding: 0.4rem 1.15rem;
+  border-radius: 9999px !important;
   box-shadow: 0 2px 8px rgba(224, 96, 64, 0.35);
   transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .logout-btn:hover {

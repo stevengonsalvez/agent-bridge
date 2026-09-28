@@ -14,7 +14,7 @@ export function initDebugBridge() {
     enableEval: true,
     feedback: {
       enabled: true,
-      launcher: true,
+      launcher: false,
       shortcut: 'Mod+Shift+F',
       captureTelemetry: true,
       captureAppState: true,
