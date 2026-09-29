@@ -247,6 +247,9 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
       commandExecutor = new CommandExecutor(resolvedConfig, send);
 
       resolvedConfig.onConnect?.();
+      window.dispatchEvent(new CustomEvent('agent-bridge:connected'));
+      const dmOpen = (window as unknown as { __agentBridgeDesignMode?: { setBridgeConnected?: (c: boolean) => void } }).__agentBridgeDesignMode;
+      dmOpen?.setBridgeConnected?.(true);
     };
 
     ws.onmessage = (event) => {
@@ -288,10 +291,16 @@ export function createDebugBridge(config: DebugBridgeConfig): DebugBridge {
       cleanup();
       resolvedConfig.onDisconnect?.();
       scheduleReconnect();
+      window.dispatchEvent(new CustomEvent('agent-bridge:disconnected'));
+      const dmClose = (window as unknown as { __agentBridgeDesignMode?: { setBridgeConnected?: (c: boolean) => void } }).__agentBridgeDesignMode;
+      dmClose?.setBridgeConnected?.(false);
     };
 
     ws.onerror = () => {
       resolvedConfig.onError?.(new Error('WebSocket error'));
+      window.dispatchEvent(new CustomEvent('agent-bridge:disconnected'));
+      const dmErr = (window as unknown as { __agentBridgeDesignMode?: { setBridgeConnected?: (c: boolean) => void } }).__agentBridgeDesignMode;
+      dmErr?.setBridgeConnected?.(false);
     };
   };
 
