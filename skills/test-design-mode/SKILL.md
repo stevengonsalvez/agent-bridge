@@ -74,6 +74,9 @@ This skill provides an automated, reproducible end-to-end test suite and subagen
 | **Per-Element Crops** | Bounding Box Screenshots | Captures tight cropped screenshots per element in batch (`surface-...-crop-...-screenshot.png`). |
 | **CMUX Line 1 Parity** | Multimodal Prompt Format | Emits line 1 `<crop0> <text> <crop1> <crop2>`, `Page: <url>`, and `Details: <context.json>`. |
 | **Structured Handoff** | Tokenized Prompt Array | Populates `prompt: [{ selection: 0 }, { text: ... }, ...]` and `context.json` schema matching cmux. |
+| **Dock Liveness Pill** | Agent Connection State | Displays 🟢 `● Agent Ready` when bridge is listening, 🟠 `○ Offline (Copy)` when disconnected; morphs to `⚙ Working` and `✓ Done`. |
+| **DOM Target Shimmer** | Visual Working Feedback | Selected element receives `.shimmer-working` cyan pulse and `⚡ Working` tag while agent processes; flashes green on completion. |
+| **Feedback Loop Runner** | Automated Loop Verification | Runs `node scripts/verify-feedback-loop.mjs` to assert liveness pill states and element shimmer in headless browser. |
 
 ---
 
