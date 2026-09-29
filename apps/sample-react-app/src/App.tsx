@@ -110,6 +110,106 @@ const COLOR_VARIANTS = [
 
 const SIZES = ['7.0', '8.0', '8.5', '9.0', '9.5', '10.0', '10.5', '11.0', '12.0', '13.0'];
 
+function renderAngleSvg(index: number, colorHex: string, isThumb = false) {
+  if (index === 1) {
+    // Outsole & Lugs
+    return (
+      <svg viewBox="0 0 600 360" className="shoe-svg" width="100%" height="auto">
+        <defs>
+          <linearGradient id={`treadGrad-${isThumb ? 'th' : 'main'}`} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#18181b" />
+            <stop offset="100%" stopColor="#09090b" />
+          </linearGradient>
+        </defs>
+        <path d="M 160,180 C 160,80 230,50 300,50 C 370,50 440,80 440,180 C 440,240 400,310 300,310 C 200,310 160,240 160,180 Z" fill={`url(#treadGrad-${isThumb ? 'th' : 'main'})`} stroke="#27272a" strokeWidth="3" />
+        <path d="M 230,170 Q 300,185 370,170 L 360,210 Q 300,225 240,210 Z" fill="#09090b" stroke="#3f3f46" strokeWidth="1.5" />
+        <rect x="250" y="180" width="100" height="25" rx="4" fill="#18181b" stroke={colorHex} strokeWidth="1.5" strokeDasharray="3,3" />
+        <text x="300" y="196" textAnchor="middle" fill={colorHex} fontSize="9" fontWeight="bold" letterSpacing="1">CARBON SHIELD</text>
+        <path d="M 220,90 L 250,75 L 280,90 M 320,90 L 350,75 L 380,90" stroke={colorHex} strokeWidth="6" strokeLinecap="round" fill="none" />
+        <path d="M 210,120 L 250,105 L 290,120 M 310,120 L 350,105 L 390,120" stroke={colorHex} strokeWidth="6" strokeLinecap="round" fill="none" />
+        <path d="M 220,150 L 250,135 L 280,150 M 320,150 L 350,135 L 380,150" stroke={colorHex} strokeWidth="6" strokeLinecap="round" fill="none" />
+        <path d="M 230,240 L 260,255 L 290,240 M 310,240 L 340,255 L 370,240" stroke="#71717a" strokeWidth="5" strokeLinecap="round" fill="none" />
+        <path d="M 240,270 L 270,285 L 300,270 M 300,270 L 330,285 L 360,270" stroke={colorHex} strokeWidth="5" strokeLinecap="round" fill="none" />
+        <circle cx="180" cy="110" r="6" fill={colorHex} />
+        <circle cx="175" cy="150" r="6" fill={colorHex} />
+        <circle cx="420" cy="110" r="6" fill={colorHex} />
+        <circle cx="425" cy="150" r="6" fill={colorHex} />
+      </svg>
+    );
+  }
+  if (index === 2) {
+    // Carbon Plate
+    return (
+      <svg viewBox="0 0 600 360" className="shoe-svg" width="100%" height="auto">
+        <defs>
+          <pattern id={`carbonWeave-${isThumb ? 'th' : 'main'}`} width="8" height="8" patternUnits="userSpaceOnUse">
+            <path d="M 0,0 L 8,8 M 8,0 L 0,8" stroke="#3f3f46" strokeWidth="1" />
+          </pattern>
+          <linearGradient id={`plateGrad-${isThumb ? 'th' : 'main'}`} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#27272a" />
+            <stop offset="50%" stopColor="#18181b" />
+            <stop offset="100%" stopColor="#09090b" />
+          </linearGradient>
+        </defs>
+        <path d="M 120,220 C 180,180 240,160 300,160 C 380,160 440,190 490,210 L 470,235 C 410,215 350,195 300,195 C 240,195 180,210 130,240 Z" fill={`url(#plateGrad-${isThumb ? 'th' : 'main'})`} stroke={colorHex} strokeWidth="2" />
+        <path d="M 440,190 Q 480,170 520,160 L 530,175 Q 490,185 460,200 Z" fill="#18181b" stroke={colorHex} strokeWidth="2" />
+        <path d="M 450,215 Q 490,210 535,225 L 530,240 Q 480,225 440,225 Z" fill="#18181b" stroke={colorHex} strokeWidth="2" />
+        <path d="M 140,225 Q 300,175 460,205" fill={`url(#carbonWeave-${isThumb ? 'th' : 'main'})`} opacity="0.6" />
+        <path d="M 320,150 L 360,110 M 360,110 L 350,110 M 360,110 L 360,120" stroke={colorHex} strokeWidth="3" strokeLinecap="round" />
+        <path d="M 420,140 L 460,100 M 460,100 L 450,100 M 460,100 L 460,110" stroke={colorHex} strokeWidth="3" strokeLinecap="round" />
+        <text x="300" y="270" textAnchor="middle" fill="#f4f4f5" fontSize={isThumb ? "12" : "14"} fontWeight="bold" letterSpacing="2">3D FORKED PROPULSION PLATE</text>
+        <text x="300" y="292" textAnchor="middle" fill={colorHex} fontSize={isThumb ? "10" : "11"} fontWeight="600">+14% MECHANICAL ENERGY RETURN</text>
+      </svg>
+    );
+  }
+  if (index === 3) {
+    // Anatomical Fit
+    return (
+      <svg viewBox="0 0 600 360" className="shoe-svg" width="100%" height="auto">
+        <defs>
+          <linearGradient id={`fitGrad-${isThumb ? 'th' : 'main'}`} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#18181b" />
+            <stop offset="100%" stopColor="#09090b" />
+          </linearGradient>
+        </defs>
+        <path d="M 170,180 C 170,90 220,60 300,60 C 370,60 430,90 430,180 C 430,250 380,300 300,300 C 220,300 170,250 170,180 Z" fill={`url(#fitGrad-${isThumb ? 'th' : 'main'})`} stroke="#3f3f46" strokeWidth="2.5" />
+        <path d="M 220,85 C 260,70 340,70 380,85" stroke={colorHex} strokeWidth="3" strokeLinecap="round" fill="none" />
+        <path d="M 250,130 C 250,190 260,220 300,220 C 340,220 350,190 350,130 Z" fill="#09090b" stroke="#27272a" strokeWidth="2" />
+        <path d="M 245,140 L 355,160 M 355,150 L 245,170 M 245,170 L 355,190 M 355,180 L 245,200" stroke={colorHex} strokeWidth="3.5" strokeLinecap="round" />
+        <ellipse cx="300" cy="245" rx="35" ry="25" fill="#18181b" stroke="#3f3f46" strokeWidth="2" />
+        <circle cx="300" cy="245" r="16" fill="#09090b" />
+        <text x="300" y="330" textAnchor="middle" fill="#a1a1aa" fontSize={isThumb ? "10" : "11"} fontWeight="600">ZERO CRUSH ANATOMICAL TOE BOX</text>
+      </svg>
+    );
+  }
+  // Default index 0: Side Profile
+  return (
+    <svg viewBox="0 0 600 360" className="shoe-svg" width="100%" height="auto">
+      <defs>
+        <linearGradient id={`carbonPlate-${isThumb ? 'th' : 'main'}`} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#27272a" />
+          <stop offset="50%" stopColor="#18181b" />
+          <stop offset="100%" stopColor="#09090b" />
+        </linearGradient>
+        <linearGradient id={`accentGrad-${isThumb ? 'th' : 'main'}`} x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor={colorHex} />
+          <stop offset="100%" stopColor="#38bdf8" />
+        </linearGradient>
+      </defs>
+      <path d="M 60,270 Q 140,290 280,285 Q 420,280 540,250 L 530,220 Q 390,240 260,230 Q 150,225 70,235 Z" fill="#18181b" />
+      <path d="M 80,280 L 95,295 L 110,282 L 130,297 L 150,283 L 180,298 L 220,285 L 260,296 L 310,283 L 360,292 L 420,280 L 480,285 L 530,255" stroke={colorHex} strokeWidth="6" strokeLinecap="round" fill="none" />
+      <path d="M 68,235 Q 160,240 270,235 Q 400,230 528,215 L 515,185 Q 380,195 250,185 Q 150,180 85,200 Z" fill="#27272a" />
+      <path d="M 120,230 Q 260,225 460,205" stroke={`url(#carbonPlate-${isThumb ? 'th' : 'main'})`} strokeWidth="8" strokeLinecap="round" />
+      <path d="M 120,230 Q 260,225 460,205" stroke={colorHex} strokeWidth="2" strokeDasharray="6,4" />
+      <path d="M 85,200 Q 120,130 210,120 Q 270,115 330,130 Q 380,80 430,90 Q 480,110 515,185 Z" fill="#09090b" stroke="#3f3f46" strokeWidth="2" />
+      <path d="M 180,185 Q 260,140 380,145 Q 440,150 490,180" fill="none" stroke={`url(#accentGrad-${isThumb ? 'th' : 'main'})`} strokeWidth="6" strokeLinecap="round" />
+      <path d="M 230,125 L 260,175 L 290,128 L 320,178 L 350,132" stroke="#52525b" strokeWidth="3" fill="none" />
+      <circle cx="140" cy="170" r="14" fill="#18181b" stroke={colorHex} strokeWidth="2" />
+      <text x="140" y="174" textAnchor="middle" fill="#f4f4f5" fontSize="10" fontWeight="bold">▲</text>
+    </svg>
+  );
+}
+
 export function Home() {
   const addToCart = useStore((s) => s.addToCart);
   const [selectedColor, setSelectedColor] = useState(COLOR_VARIANTS[0]);
@@ -159,38 +259,9 @@ export function Home() {
               <span className="badge-pill badge-sale">SAVE 24%</span>
             </div>
 
-            {/* SVG Visual Graphic of the Technical Trail Shoe */}
+            {/* Dynamic Visual Graphic of the Technical Trail Shoe */}
             <div className="shoe-visual-canvas" style={{ background: `radial-gradient(circle at 50% 60%, ${selectedColor.hex}22 0%, #09090b 85%)` }}>
-              <svg viewBox="0 0 600 360" className="shoe-svg" width="100%" height="auto">
-                <defs>
-                  <linearGradient id="carbonPlate" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#27272a" />
-                    <stop offset="50%" stopColor="#18181b" />
-                    <stop offset="100%" stopColor="#09090b" />
-                  </linearGradient>
-                  <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor={selectedColor.hex} />
-                    <stop offset="100%" stopColor="#38bdf8" />
-                  </linearGradient>
-                </defs>
-                {/* Sole / Outsole Profile */}
-                <path d="M 60,270 Q 140,290 280,285 Q 420,280 540,250 L 530,220 Q 390,240 260,230 Q 150,225 70,235 Z" fill="#18181b" />
-                {/* Lugs */}
-                <path d="M 80,280 L 95,295 L 110,282 L 130,297 L 150,283 L 180,298 L 220,285 L 260,296 L 310,283 L 360,292 L 420,280 L 480,285 L 530,255" stroke={selectedColor.hex} strokeWidth="6" strokeLinecap="round" fill="none" />
-                {/* Midsole Cushion */}
-                <path d="M 68,235 Q 160,240 270,235 Q 400,230 528,215 L 515,185 Q 380,195 250,185 Q 150,180 85,200 Z" fill="#27272a" />
-                {/* Carbon Plate Inlay */}
-                <path d="M 120,230 Q 260,225 460,205" stroke="url(#carbonPlate)" strokeWidth="8" strokeLinecap="round" />
-                <path d="M 120,230 Q 260,225 460,205" stroke={selectedColor.hex} strokeWidth="2" strokeDasharray="6,4" />
-                {/* Upper Body */}
-                <path d="M 85,200 Q 120,130 210,120 Q 270,115 330,130 Q 380,80 430,90 Q 480,110 515,185 Z" fill="#09090b" stroke="#3f3f46" strokeWidth="2" />
-                {/* Dynamic Accents & Lines */}
-                <path d="M 180,185 Q 260,140 380,145 Q 440,150 490,180" fill="none" stroke="url(#accentGrad)" strokeWidth="6" strokeLinecap="round" />
-                <path d="M 230,125 L 260,175 L 290,128 L 320,178 L 350,132" stroke="#52525b" strokeWidth="3" fill="none" />
-                {/* Trail Apex Logo on Heel */}
-                <circle cx="140" cy="170" r="14" fill="#18181b" stroke={selectedColor.hex} strokeWidth="2" />
-                <text x="140" y="174" textAnchor="middle" fill="#f4f4f5" fontSize="10" fontWeight="bold">▲</text>
-              </svg>
+              {renderAngleSvg(activeThumb, selectedColor.hex, false)}
             </div>
 
             <div className="gallery-meta-bar">
@@ -210,7 +281,7 @@ export function Home() {
                 data-testid={`thumb-${idx}`}
               >
                 <div className="thumb-mini-box" style={{ borderColor: activeThumb === idx ? selectedColor.hex : '#3f3f46' }}>
-                  <span>{idx + 1}</span>
+                  {renderAngleSvg(idx, selectedColor.hex, true)}
                 </div>
                 <span className="thumb-label">{label}</span>
               </button>
@@ -294,17 +365,20 @@ export function Home() {
                 📏 Size & Fit Calculator
               </button>
             </div>
-            <div className="sizes-grid">
-              {SIZES.map((size) => (
-                <button
-                  key={size}
-                  className={`size-btn ${selectedSize === size ? 'active' : ''}`}
-                  onClick={() => setSelectedSize(size)}
-                  data-testid={`size-${size}`}
-                >
-                  {size}
-                </button>
-              ))}
+            <div className="sizes-dropdown-wrap">
+              <select
+                className="size-select-dropdown"
+                value={selectedSize}
+                onChange={(e) => setSelectedSize(e.target.value)}
+                data-testid="size-dropdown"
+                aria-label="Select US Men's Size"
+              >
+                {SIZES.map((size) => (
+                  <option key={size} value={size}>
+                    US {size} Men (In Stock)
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="stock-alert-text">
               ⚡ <strong>Low Stock:</strong> Only 3 pairs remaining in size {selectedSize} at our London fulfillment hub.
