@@ -93,11 +93,22 @@ import html2canvas from 'html2canvas-pro';
   let verticalDockSide: 'right' | 'left' = 'right';
   let isPromptBarCollapsed = false;
   let lastRenderedVertical: boolean | null = null;
+  let bridgeConnected = false;
   let currentAgentStatus: {
     status: 'idle' | 'working' | 'done' | 'error';
     message?: string;
     timestamp?: number;
   } = { status: 'idle' };
+
+  const isBridgeConnected = (): boolean => {
+    try {
+      const sdk = (globalThis as unknown as { __debugBridge?: { isConnected?: () => boolean } }).__debugBridge;
+      if (typeof sdk?.isConnected === 'function') {
+        return sdk.isConnected();
+      }
+    } catch {}
+    return bridgeConnected;
+  };
 
   const isVerticalMode = (): boolean => {
     if (layoutOrientation === 'vertical') return true;
@@ -439,8 +450,10 @@ import html2canvas from 'html2canvas-pro';
 
       ${selections.map((sel, idx) => {
         const rect = sel.element.getBoundingClientRect();
+        const isWorking = currentAgentStatus.status === 'working';
+        const isDone = currentAgentStatus.status === 'done';
         return `
-          <div class="box selected-box" style="
+          <div class="box selected-box ${isWorking ? 'shimmer-working' : isDone ? 'shimmer-done' : ''}" style="
             --box-color: ${sel.color};
             left: ${rect.left + window.scrollX}px;
             top: ${rect.top + window.scrollY}px;
@@ -449,6 +462,8 @@ import html2canvas from 'html2canvas-pro';
           ">
             <div class="badge">
               <span>@e${idx + 1} &lt;${sel.element.localName}&gt;</span>
+              ${isWorking ? '<span class="target-shimmer-tag">⚡ Working</span>' : ''}
+              ${isDone ? '<span class="target-done-tag">✓ Updated</span>' : ''}
               <button data-remove-selection="${idx}" title="Deselect">&times;</button>
             </div>
           </div>
@@ -463,6 +478,48 @@ import html2canvas from 'html2canvas-pro';
     const diff = getComputedCssDiff();
     const selIndex = activeElement ? selections.findIndex((s) => s.element === activeElement) : (selections.length ? selections.length - 1 : -1);
     const activeSel = selIndex >= 0 ? selections[selIndex] : null;
+
+    const renderAgentStatusPill = (extraClass = '') => {
+      const isOnline = isBridgeConnected();
+      if (currentAgentStatus.status === 'working') {
+        return `
+          <div class="agent-status-pill ${extraClass} status-working" title="${escapeHtml(currentAgentStatus.message || 'Agent working on feedback...')}">
+            <span class="status-spinner"></span>
+            <span class="status-text">${escapeHtml(currentAgentStatus.message || 'Working...')}</span>
+          </div>
+        `;
+      }
+      if (currentAgentStatus.status === 'done') {
+        return `
+          <div class="agent-status-pill ${extraClass} status-done" title="${escapeHtml(currentAgentStatus.message || 'Changes applied')}">
+            <span class="status-icon">✓</span>
+            <span class="status-text">${escapeHtml(currentAgentStatus.message || 'Done')}</span>
+          </div>
+        `;
+      }
+      if (currentAgentStatus.status === 'error') {
+        return `
+          <div class="agent-status-pill ${extraClass} status-error" title="${escapeHtml(currentAgentStatus.message || 'Agent error')}">
+            <span class="status-icon">⚠</span>
+            <span class="status-text">${escapeHtml(currentAgentStatus.message || 'Error')}</span>
+          </div>
+        `;
+      }
+      if (isOnline) {
+        return `
+          <div class="agent-status-pill ${extraClass} status-ready" title="Agent bridge online. Ready for browser feedback.">
+            <span class="status-dot status-dot-ready"></span>
+            <span class="status-text">Agent Ready</span>
+          </div>
+        `;
+      }
+      return `
+        <div class="agent-status-pill ${extraClass} status-offline" title="Bridge offline. Prompts will copy to clipboard.">
+          <span class="status-dot status-dot-offline"></span>
+          <span class="status-text">Offline (Copy)</span>
+        </div>
+      `;
+    };
 
     let html = `
       <style>
@@ -480,7 +537,36 @@ import html2canvas from 'html2canvas-pro';
         .box-layer { position: absolute; inset: 0; pointer-events: none; z-index: 20; }
         .box { position: absolute; box-sizing: border-box; pointer-events: none; }
         .hover-box { border: 2px dashed #0A84FF; background: rgba(10, 132, 255, 0.08); }
-        .selected-box { border: 2.5px solid var(--box-color, #0A84FF); background: rgba(10, 132, 255, 0.05); }
+        .selected-box { border: 2.5px solid var(--box-color, #0A84FF); background: rgba(10, 132, 255, 0.05); transition: all 0.2s ease; }
+        .selected-box.shimmer-working {
+          border: 2.5px solid #3b82f6 !important;
+          background: rgba(59, 130, 246, 0.12) !important;
+          animation: targetPulseShimmer 1.4s infinite ease-in-out;
+        }
+        .selected-box.shimmer-done {
+          border: 2.5px solid #22c55e !important;
+          background: rgba(34, 197, 94, 0.15) !important;
+          animation: targetFlashDone 1.8s ease-out forwards;
+        }
+        @keyframes targetPulseShimmer {
+          0% { box-shadow: 0 0 8px rgba(59, 130, 246, 0.4), inset 0 0 6px rgba(59, 130, 246, 0.15); }
+          50% { box-shadow: 0 0 24px rgba(59, 130, 246, 0.85), inset 0 0 16px rgba(59, 130, 246, 0.35); }
+          100% { box-shadow: 0 0 8px rgba(59, 130, 246, 0.4), inset 0 0 6px rgba(59, 130, 246, 0.15); }
+        }
+        @keyframes targetFlashDone {
+          0% { box-shadow: 0 0 24px rgba(34, 197, 94, 0.9); }
+          50% { box-shadow: 0 0 12px rgba(34, 197, 94, 0.5); }
+          100% { box-shadow: 0 0 0px transparent; }
+        }
+        .target-shimmer-tag {
+          background: #2563eb; color: #eff6ff; font-size: 9px; padding: 1px 5px;
+          border-radius: 9999px; font-weight: 700; letter-spacing: 0.02em;
+          animation: pulseSend 1.2s infinite ease-in-out;
+        }
+        .target-done-tag {
+          background: #16a34a; color: #f0fdf4; font-size: 9px; padding: 1px 5px;
+          border-radius: 9999px; font-weight: 700; letter-spacing: 0.02em;
+        }
         .badge {
           position: absolute; top: -24px; left: -2px; height: 20px; padding: 0 6px;
           border-radius: 4px; background: var(--box-color, #0A84FF); color: #fff;
@@ -1257,6 +1343,16 @@ import html2canvas from 'html2canvas-pro';
           from { opacity: 0; transform: scale(0.92); }
           to { opacity: 1; transform: scale(1); }
         }
+        .agent-status-pill.status-ready {
+          background: rgba(16, 185, 129, 0.16);
+          border: 1px solid rgba(16, 185, 129, 0.45);
+          color: #a7f3d0;
+        }
+        .agent-status-pill.status-offline {
+          background: rgba(148, 163, 184, 0.14);
+          border: 1px solid rgba(148, 163, 184, 0.3);
+          color: #cbd5e1;
+        }
         .agent-status-pill.status-working {
           background: rgba(37, 99, 235, 0.22);
           border: 1px solid rgba(59, 130, 246, 0.5);
@@ -1273,6 +1369,24 @@ import html2canvas from 'html2canvas-pro';
           background: rgba(220, 38, 38, 0.22);
           border: 1px solid rgba(239, 68, 68, 0.5);
           color: #fca5a5;
+        }
+        .status-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          display: inline-block;
+          flex-shrink: 0;
+        }
+        .status-dot-ready {
+          background: #10b981;
+          box-shadow: 0 0 6px #10b981;
+        }
+        .status-dot-offline {
+          background: #94a3b8;
+        }
+        .status-icon {
+          font-weight: 700;
+          font-size: 11px;
         }
         .status-spinner {
           width: 10px;
@@ -1658,18 +1772,11 @@ import html2canvas from 'html2canvas-pro';
           </button>
 
           <button class="btn-action btn-send-agent mobile-send-btn" data-action="submit-batch" data-action-submit="true" title="Send to Agent (Enter)">
-            <span aria-hidden="true">➤</span>
+            <span aria-hidden="true">${currentAgentStatus.status === 'working' ? '⚙' : currentAgentStatus.status === 'done' ? '✓' : '➤'}</span>
             <span class="sr-only" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">${currentAgentStatus.status === 'working' ? 'Submitting...' : currentAgentStatus.status === 'done' ? 'Sent' : 'Send'}</span>
           </button>
 
-          ${currentAgentStatus.status !== 'idle' ? `
-            <div class="agent-status-pill mobile-status-pill status-${currentAgentStatus.status}" title="${escapeHtml(currentAgentStatus.message || '')}">
-              ${currentAgentStatus.status === 'working' ? '<span class="status-spinner"></span>' : ''}
-              ${currentAgentStatus.status === 'done' ? '<span>✓</span>' : ''}
-              ${currentAgentStatus.status === 'error' ? '<span>⚠</span>' : ''}
-              <span class="status-text">${escapeHtml(currentAgentStatus.message || (currentAgentStatus.status === 'working' ? 'Working...' : 'Done'))}</span>
-            </div>
-          ` : ''}
+          ${renderAgentStatusPill('mobile-status-pill')}
 
           <button class="mobile-prompt-collapse-btn" data-action="toggle-prompt-bar" title="Minimize Prompt Bar">
             ▾
@@ -1729,21 +1836,14 @@ import html2canvas from 'html2canvas-pro';
             <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
           </button>
 
-          <button class="btn-action btn-send-agent" data-action="submit" data-action-submit="true" title="Send to Agent (Enter)">
-            ➤ Send
+          <button class="btn-action btn-send-agent ${currentAgentStatus.status === 'working' ? 'status-working' : currentAgentStatus.status === 'done' ? 'status-done' : ''}" data-action="submit" data-action-submit="true" title="${currentAgentStatus.status === 'working' ? escapeHtml(currentAgentStatus.message || 'Agent working...') : currentAgentStatus.status === 'done' ? 'Changes applied' : 'Send to Agent (Enter)'}">
+            ${currentAgentStatus.status === 'working' ? '⚙ Working' : currentAgentStatus.status === 'done' ? '✓ Sent' : '➤ Send'}
           </button>
           <button class="btn-action btn-send-agent-compat" data-action="submit-batch" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;" tabindex="-1" aria-hidden="true">
             Send
           </button>
 
-          ${currentAgentStatus.status !== 'idle' ? `
-            <div class="agent-status-pill status-${currentAgentStatus.status}" title="${escapeHtml(currentAgentStatus.message || '')}">
-              ${currentAgentStatus.status === 'working' ? '<span class="status-spinner"></span>' : ''}
-              ${currentAgentStatus.status === 'done' ? '<span>✓</span>' : ''}
-              ${currentAgentStatus.status === 'error' ? '<span>⚠</span>' : ''}
-              <span class="status-text">${escapeHtml(currentAgentStatus.message || (currentAgentStatus.status === 'working' ? 'Agent working...' : 'Changes applied'))}</span>
-            </div>
-          ` : ''}
+          ${renderAgentStatusPill()}
 
           <div class="render-item-wrap">
             <button class="btn-action btn-quick-render btn-quick-render-ai" data-action="quick-render" data-action-ai="quick-render-ai" title="Quick Render (AI) with Jev">
@@ -2010,6 +2110,7 @@ import html2canvas from 'html2canvas-pro';
         message: 'Agent working on changes...',
         timestamp: Date.now(),
       };
+      renderOverlay();
 
       // 1. Submit through SDK if present (syncs to bridge WebSocket & feedback store)
       const sdk = (globalThis as unknown as {
@@ -3389,6 +3490,12 @@ import html2canvas from 'html2canvas-pro';
       return getStoredGatewayKey();
     },
     getGatewayKey: () => getStoredGatewayKey(),
+    setBridgeConnected: (connected: boolean) => {
+      bridgeConnected = connected;
+      renderOverlay();
+      return getSnapshot();
+    },
+    isBridgeConnected: () => isBridgeConnected(),
   };
 
   if (typeof window !== 'undefined') {
@@ -3398,6 +3505,16 @@ import html2canvas from 'html2canvas-pro';
         runtimeApi.setAgentStatus(payload);
       }
     }) as EventListener);
+
+    window.addEventListener('agent-bridge:connected', () => {
+      bridgeConnected = true;
+      renderOverlay();
+    });
+
+    window.addEventListener('agent-bridge:disconnected', () => {
+      bridgeConnected = false;
+      renderOverlay();
+    });
 
     window.addEventListener('agent-bridge:crop-saved', ((e: CustomEvent) => {
       if (e.detail && typeof e.detail === 'object') {

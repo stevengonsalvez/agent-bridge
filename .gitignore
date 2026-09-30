@@ -18,6 +18,9 @@ recordings/
 
 # Agent scratch state (local only)
 .agents/goals/
+.agents/handover/
+.gemini/
+HANDOVER.md
 .codex/session/
 plans/
 research/
