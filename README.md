@@ -96,7 +96,7 @@ if (import.meta.env.DEV) {
 | Package | Description | Install |
 |---------|-------------|---------|
 | `debug-bridge-cli` | CLI with WebSocket server & browser commands | `npm install -g debug-bridge-cli` |
-| `debug-bridge-skill` | Universal skill installer for Claude, Gemini, Cursor, Codex | `npx debug-bridge-skill` |
+| `debug-bridge-skill` | Universal skill installer for Claude, Gemini, Cursor, Codex | `npx skills add stevengonsalvez/agent-bridge --skill debug-bridge -g` |
 | `debug-bridge-browser-sidecar` | Playwright-driven CDP sidecar provider | `npm install debug-bridge-browser-sidecar` |
 | `debug-bridge-feedback-mcp` | MCP server for Claude Code and agent runners | `npm install debug-bridge-feedback-mcp` |
 | `debug-bridge-browser` | Optional in-app browser SDK | `npm install debug-bridge-browser` |
@@ -174,9 +174,23 @@ Debug Bridge includes a skill/plugin system for seamless integration with AI cod
 
 ### Installation for AI Assistants
 
-#### Universal: Automatic npm Installer (Recommended)
+#### Universal: Install from this repo (Recommended)
 
-Install the Debug Bridge skill into all detected agent environments (Claude Code, Gemini/Antigravity, Cursor, Codex, OpenCode) with a single command:
+Install the Debug Bridge skill straight from GitHub into every agent (Claude Code, Codex, Cursor, Gemini/Antigravity, OpenCode and more) with the [`skills`](https://www.npmjs.com/package/skills) CLI:
+
+```bash
+# Global: ~/.agents/skills/debug-bridge, symlinked into ~/.claude/skills
+npx skills add stevengonsalvez/agent-bridge --skill debug-bridge -g -y
+
+# Current project only
+npx skills add stevengonsalvez/agent-bridge --skill debug-bridge -y
+```
+
+This always installs the `SKILL.md` from `master`; re-run it to update.
+
+#### npm Installer (not yet published)
+
+Once `debug-bridge-skill` is published to npm:
 
 ```bash
 npx debug-bridge-skill
