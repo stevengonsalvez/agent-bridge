@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Command } from 'commander';
+import { WebSocket } from 'ws';
 import { sendBrowserCommand } from './browser-client';
 import { startServer } from '../server/websocket-server';
 import { createBrowserSidecar } from 'debug-bridge-browser-sidecar';
@@ -385,5 +386,54 @@ export function registerBrowserCommands(program: Command): void {
         if (opts.clear) console.log('Cleared live preview patch.');
         else console.log(`Injected live preview CSS (${opts.css?.length ?? 0} bytes) into browser.`);
       }
+    });
+
+  // Agent inbox: block until the Design Mode dock sends a change request, print it, exit.
+  // Exit codes: 0 = request received, 1 = timeout, 2 = bridge unreachable or closed.
+  // ponytail: single-shot, a submit landing between exit and re-arm is missed; persist submits server-side if that bites.
+  browserCmd
+    .command('wait')
+    .description('Block until Design Mode submits a change request, then print it and exit')
+    .option('-p, --port <number>', 'Bridge port', '4000')
+    .option('-s, --session <string>', 'Session ID', 'default')
+    .option('--timeout <ms>', 'Give up after this many ms', '1800000')
+    .option('--json', 'Output raw submit message as JSON', false)
+    .action((opts) => {
+      const url = `ws://localhost:${parseInt(opts.port, 10)}/debug?role=agent&sessionId=${encodeURIComponent(opts.session)}`;
+      const ws = new WebSocket(url);
+      const timer = setTimeout(() => {
+        console.error(`TIMEOUT: no Design Mode request after ${opts.timeout}ms`);
+        process.exit(1);
+      }, parseInt(opts.timeout, 10));
+      const fail = (why: string) => {
+        clearTimeout(timer);
+        console.error(`BRIDGE DOWN: ${why} (${url})`);
+        process.exit(2);
+      };
+      ws.on('error', (err) => fail(err.message || (err as NodeJS.ErrnoException).code || 'connect failed'));
+      ws.on('close', () => fail('connection closed'));
+      ws.on('open', () => console.error(`Waiting for Design Mode request on session "${opts.session}"...`));
+      ws.on('message', (raw) => {
+        let msg: { type?: string; url?: string; prompt?: string; requestedChange?: string; artifacts?: Record<string, unknown> };
+        try {
+          msg = JSON.parse(raw.toString());
+        } catch {
+          return;
+        }
+        if (msg.type !== 'browser_design_mode_submit') return;
+        clearTimeout(timer);
+        ws.removeAllListeners('close');
+        ws.close();
+        if (opts.json) {
+          console.log(JSON.stringify(msg, null, 2));
+        } else {
+          console.log('DESIGN MODE REQUEST');
+          console.log(`Change:  ${msg.requestedChange || '(none typed)'}`);
+          console.log(`Page:    ${msg.url}`);
+          for (const [k, v] of Object.entries(msg.artifacts || {})) console.log(`${k}: ${Array.isArray(v) ? v.join(', ') : v}`);
+          console.log(`\nPrompt:\n${msg.prompt}`);
+        }
+        process.exit(0);
+      });
     });
 }
