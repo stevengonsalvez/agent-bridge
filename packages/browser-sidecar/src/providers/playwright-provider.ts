@@ -64,6 +64,8 @@ export class PlaywrightProvider {
   private tmuxTarget?: string;
   private tmuxAutoEnter: boolean = true;
   private agentListening = false;
+  // Tab whose dock last pressed Send; `design-mode done` reports back to it, not the selected tab
+  private lastSubmitTargetId: string | null = null;
 
   constructor(private readonly options: PlaywrightProviderOptions) {
     this.tmuxTarget = options.tmuxTarget;
@@ -459,7 +461,8 @@ export class PlaywrightProvider {
           };
         } else if (command.action === 'set_agent_status') {
           const payload = { status: command.agentStatus ?? 'done', message: command.statusMessage };
-          await target.page.evaluate((p) => {
+          const statusTarget = (this.lastSubmitTargetId && this.targets.get(this.lastSubmitTargetId)) || target;
+          await statusTarget.page.evaluate((p) => {
             const api = (window as unknown as { __agentBridgeDesignMode?: { setAgentStatus?: (s: typeof p) => unknown } }).__agentBridgeDesignMode;
             api?.setAgentStatus?.(p);
           }, payload);
@@ -568,6 +571,7 @@ export class PlaywrightProvider {
     try {
       await page.exposeFunction('__agentBridgeHost', async (msg: { type: string; payload?: Record<string, unknown> }) => {
         if (msg?.type === 'design_mode_handoff') {
+          this.lastSubmitTargetId = target.id;
           const change = typeof msg.payload?.requested_change === 'string' ? msg.payload.requested_change : undefined;
           const artifacts = await this.generateDesignModeArtifacts(target, change);
 
