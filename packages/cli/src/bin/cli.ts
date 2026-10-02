@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createRequire } from 'node:module';
 import { Command } from 'commander';
 import { startServer } from '../server/websocket-server';
 import { createOutputFormatter } from '../output/formatter';
@@ -33,7 +34,7 @@ const program = new Command();
 program
   .name('debug-bridge')
   .description('Debug bridge CLI for connecting to web applications')
-  .version('0.1.0');
+  .version((createRequire(import.meta.url)('../../package.json') as { version: string }).version);
 
 registerBrowserCommands(program);
 registerSkillCommands(program);
