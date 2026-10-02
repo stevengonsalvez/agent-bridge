@@ -1,6 +1,8 @@
 # debug-bridge-browser
 
-Browser SDK for debug-bridge - enables AI agents to inspect and control web applications.
+Optional in-app SDK for debug-bridge. You do not need it for the default workflow: the zero-instrumentation sidecar (`debug-bridge browser open <url>`) drives any app without code changes and shows the Design Mode dock automatically. Install this SDK when you want custom state providers, app telemetry, or in-page commands. See the [root README](../../README.md).
+
+This package also contains the Design Mode dock runtime that the sidecar injects into pages. Dock behaviour is documented in [docs/design-mode-dock.md](../../docs/design-mode-dock.md).
 
 ## Installation
 
@@ -29,6 +31,8 @@ if (import.meta.env.DEV) {
 
 
 ## Configuration Options
+
+See `packages/types/src/config/index.ts` for the complete type, including `enableNetwork`, `enableNavigation`, `feedback`, and reconnection settings (`autoReconnect`, `reconnectMaxAttempts`, `reconnectBaseDelayMs`, `reconnectMaxDelayMs`). The listing below shows the core options.
 
 ```typescript
 interface DebugBridgeConfig {
