@@ -47,6 +47,7 @@ Agent harnesses often run each command in a fresh shell, so env vars and shell v
    | `0` | Request received | Re-arm step 3 first so the next Send is not missed. Then read the printed change, page URL, and artifact paths, edit the source, and verify with `debug-bridge browser screenshot`. Finally report back (step 5). |
    | `1` | Timeout, nobody pressed Send | Re-arm step 3. |
    | `2` | Bridge unreachable or connection closed | Restart the bridge (step 1), then re-arm. |
+   | `64` | Bad arguments | Fix the command. Re-arming it unchanged fails again at once. |
 
 5. Close the loop in the dock. Send sets the pill to Working, so tell it you are finished:
 
@@ -60,7 +61,7 @@ Agent harnesses often run each command in a fresh shell, so env vars and shell v
 
 6. Stop only when the user ends the session or the bridge is shut down.
 
-Start `wait` before pressing Send, and re-arm before doing anything slow. Requests are not queued; one submitted while no `wait` is running is missed.
+Re-arm before doing anything slow. If a Send arrives while no `wait` is connected, the bridge keeps the latest one and hands it to the next `wait` that connects (only the latest; earlier unclaimed Sends are dropped).
 
 Only target a tmux pane (`AGENT_BRIDGE_TMUX_TARGET=%3`, a pane id) when you are not running the `wait` loop.
 

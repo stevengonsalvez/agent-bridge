@@ -80,15 +80,16 @@ Options: `-r, --request <text>`, `-t, --tool <tool>`, `--css <string>`, `-c, --c
 
 ## browser wait
 
-Block until the dock's **Send** fires, print the request, exit. Single-shot. Loop guidance: [agent-loop](./agent-loop.md).
+Block until the dock's **Send** fires, print the request, exit. Single-shot. If a Send arrives while no `wait` is connected, the bridge keeps the latest one and hands it to the next `wait` that connects (only the latest; earlier unclaimed Sends are dropped). Loop guidance: [agent-loop](./agent-loop.md).
 
 ```bash
-debug-bridge browser wait --port 4000 --session default [--timeout 1800000] [--json]
+debug-bridge browser wait --port 4000 --session default [--host localhost] [--timeout 1800000] [--json]
 ```
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--timeout <ms>` | `1800000` (30 min) | Give up after this long |
+| `--host <host>` | `localhost` | Bridge host |
+| `--timeout <ms>` | `1800000` (30 min) | Give up after this long. Whole milliseconds, 1 to 2147483647 |
 | `--json` | off | Print the raw `browser_design_mode_submit` message |
 
 | Exit code | Meaning |
@@ -96,8 +97,9 @@ debug-bridge browser wait --port 4000 --session default [--timeout 1800000] [--j
 | `0` | Request received. Prints the change, page URL, artifact paths, and full prompt |
 | `1` | Timeout (`TIMEOUT: no Design Mode request after <ms>ms` on stderr) |
 | `2` | Bridge unreachable or connection closed (`BRIDGE DOWN: ...` on stderr) |
+| `64` | Bad arguments, for example `--timeout 30m`. Fix the command; do not re-arm unchanged |
 
-It connects as `ws://localhost:<port>/debug?role=agent&listener=1&sessionId=<session>`.
+It connects as `ws://<host>:<port>/debug?role=agent&listener=1&sessionId=<session>`.
 
 ## design-mode (top level)
 

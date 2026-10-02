@@ -42,7 +42,7 @@ broadcast browser_design_mode_submit ─▶ bridge ─▶ every agent client on 
 
 Two delivery routes exist on purpose. Terminal injection (Send only; the copy buttons never inject) types the prompt into a pane for agents that live in a terminal. The WebSocket broadcast reaches any agent harness that can run a background command. Injection is best effort and can misfire in auto mode ([tmux-injection](./tmux-injection.md)); the broadcast is the dependable route.
 
-`browser wait` is single-shot and the bridge does not queue submits, so an agent that is between a `wait` exit and the next arm misses a request. That is why the skill tells agents to re-arm first.
+`browser wait` is single-shot. If a Send arrives while no `wait` is connected, the bridge keeps the latest one and hands it to the next `wait` that connects (only the latest; earlier unclaimed Sends are dropped). The skill still tells agents to re-arm first so a second Send isn't dropped.
 
 ## Package Responsibilities
 

@@ -49,7 +49,7 @@ debug-bridge browser preview-patch --css "button { background: #2563eb !importan
 debug-bridge browser wait --port 4000 --session default
 ```
 
-Blocks until **Send** is pressed in the dock. Exit `0`: request received (change, page URL, artifact paths, and prompt are printed). Exit `1`: timeout (`--timeout`, default 1800000 ms). Exit `2`: bridge unreachable or closed. It is single-shot, so agents re-arm it first after each request, then handle it, then report back with `debug-bridge browser design-mode done "<summary>"` (or `error`) so the dock leaves its Working state ([docs/agent-loop.md](../../docs/agent-loop.md)).
+Blocks until **Send** is pressed in the dock. Exit `0`: request received (change, page URL, artifact paths, and prompt are printed). Exit `1`: timeout (`--timeout`, default 1800000 ms). Exit `2`: bridge unreachable or closed. Exit `64`: bad arguments. A Send made while no `wait` is connected is kept (latest only) for the next `wait`. It is single-shot, so agents re-arm it first after each request, then handle it, then report back with `debug-bridge browser design-mode done "<summary>"` (or `error`) so the dock leaves its Working state ([docs/agent-loop.md](../../docs/agent-loop.md)).
 
 When an agent runs the `wait` loop, start the bridge with tmux injection off so prompts are not typed into another pane or delivered twice ([docs/tmux-injection.md](../../docs/tmux-injection.md)):
 

@@ -15,7 +15,7 @@ In another terminal, open it in the managed browser (from the repo root, after `
 node packages/cli/dist/bin/cli.js browser open "http://localhost:3000" --port 4000
 ```
 
-Start the listener first, then press **Send** in the dock. Requests are not queued, so a Send with no `wait` running is missed:
+Start the listener, then press **Send** in the dock. If you press Send first, the bridge keeps that request and hands it to `wait` when it starts:
 
 ```bash
 node packages/cli/dist/bin/cli.js browser wait --port 4000
