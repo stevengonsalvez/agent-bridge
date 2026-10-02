@@ -456,6 +456,13 @@ export class PlaywrightProvider {
             tmuxTarget: this.tmuxTarget,
             tmuxAutoEnter: this.tmuxAutoEnter,
           };
+        } else if (command.action === 'set_agent_status') {
+          const payload = { status: command.agentStatus ?? 'done', message: command.statusMessage };
+          await target.page.evaluate((p) => {
+            const api = (window as unknown as { __agentBridgeDesignMode?: { setAgentStatus?: (s: typeof p) => unknown } }).__agentBridgeDesignMode;
+            api?.setAgentStatus?.(p);
+          }, payload);
+          return payload;
         } else if (command.action === 'set_tmux_target') {
           if (command.tmuxTarget !== undefined) {
             this.tmuxTarget = command.tmuxTarget;

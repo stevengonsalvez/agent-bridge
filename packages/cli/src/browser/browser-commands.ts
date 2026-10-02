@@ -252,7 +252,8 @@ export function registerBrowserCommands(program: Command): void {
       | 'clear_selections'
       | 'set_tool'
       | 'clear_marks'
-      | 'set_tmux_target' = 'status';
+      | 'set_tmux_target'
+      | 'set_agent_status' = 'status';
 
     let tool = opts.tool;
     if ((action === 'tool' || action === 'set-tool') && subArg) {
@@ -270,6 +271,7 @@ export function registerBrowserCommands(program: Command): void {
     else if (action === 'clear-preview') act = 'clear_preview';
     else if (action === 'tool' || action === 'set-tool' || tool) act = 'set_tool';
     else if (action === 'set-tmux' || action === 'tmux' || action === 'set_tmux_target') act = 'set_tmux_target';
+    else if (action === 'done' || action === 'error' || action === 'working' || action === 'idle') act = 'set_agent_status';
 
     const tmuxTarget =
       opts.tmux === false || opts.tmux === 'none'
@@ -287,6 +289,8 @@ export function registerBrowserCommands(program: Command): void {
         cssPatch: opts.css,
         tmuxTarget: act === 'set_tmux_target' ? tmuxTarget : (opts.tmux !== undefined ? tmuxTarget : undefined),
         tmuxAutoEnter: opts.tmuxEnter !== false,
+        agentStatus: act === 'set_agent_status' ? (action as 'done' | 'error' | 'working' | 'idle') : undefined,
+        statusMessage: act === 'set_agent_status' ? subArg || opts.request || undefined : undefined,
       },
       { port, session: opts.session }
     );
@@ -331,7 +335,7 @@ export function registerBrowserCommands(program: Command): void {
 
   browserCmd
     .command('design-mode [action] [subArg]')
-    .description('Control in-browser Design Mode (enable, disable, status, handoff, quick-render, copy-prompt, clear)')
+    .description('Control in-browser Design Mode (enable, disable, status, handoff, quick-render, copy-prompt, clear, done, error)')
     .option('-r, --request <text>', 'Requested change description for handoff or prompt', '')
     .option('-t, --tool <tool>', 'Active tool (select, pen, rect, arrow, region, interact)')
     .option('--css <string>', 'Optional custom CSS patch for quick-render')
