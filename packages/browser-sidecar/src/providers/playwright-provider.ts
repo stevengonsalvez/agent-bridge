@@ -766,7 +766,21 @@ export class PlaywrightProvider {
     }
   }
 
-  private async generateDesignModeArtifacts(
+  private async generateDesignModeArtifacts(target: TargetState, requestedChange?: string) {
+    try {
+      return await this.captureDesignModeArtifacts(target, requestedChange);
+    } finally {
+      // Capture hides the dock; never leave it hidden if a screenshot throws
+      await target.page
+        .evaluate(() => {
+          const api = (window as unknown as { __agentBridgeDesignMode?: { setCaptureHidden?: (m: string) => void } }).__agentBridgeDesignMode;
+          api?.setCaptureHidden?.('none');
+        })
+        .catch(() => {});
+    }
+  }
+
+  private async captureDesignModeArtifacts(
     target: TargetState,
     requestedChange?: string
   ): Promise<{
@@ -828,7 +842,9 @@ export class PlaywrightProvider {
           width: Math.max(1, Math.round(sel.bounds.width)),
           height: Math.max(1, Math.round(sel.bounds.height)),
         };
-        await target.page.screenshot({ clip, path: elPath });
+        // Stale bounds can fall outside the viewport; skip that crop rather than fail the handoff
+        const ok = await target.page.screenshot({ clip, path: elPath }).then(() => true, () => false);
+        if (!ok) continue;
       }
       elementPaths.push(elPath);
       sel.screenshot_path = elPath;
