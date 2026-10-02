@@ -1,400 +1,185 @@
 # Debug Bridge
 
-AI-friendly debugging, autonomous browser control, visual feedback annotations, and in-browser Design Mode for web applications. Enables LLM agents to inspect, interact with, and control web apps.
+Let an AI coding agent see, drive, and receive visual change requests from your web app, with no changes to the app.
 
-## Quick Start (Zero-Instrumentation Sidecar - Recommended)
+Debug Bridge launches a managed Chrome through a CDP sidecar, gives the agent numbered element handles (`@e1`, `@e2`), and shows a Design Mode dock on every page. You click elements, draw on the page, describe a change, and press **Send**. The request, with screenshots and the selected elements' DOM context, lands in the agent's session.
 
-No code modifications needed in your application. Debug Bridge drives a managed browser via CDP and exposes numbered interactive handles (`@e1`, `@e2`), live CSS preview patches, and in-browser Design Mode with multi-element batching.
-
-### 1. Install the CLI
-
-```bash
-npm install -g debug-bridge-cli
+```
+┌───────────┐  Send   ┌──────────────┐  submit   ┌──────────────────┐
+│ Design    │────────▶│ bridge :4000 │──────────▶│ browser wait     │
+│ Mode dock │         │ + CDP sidecar│           │ (agent, bg job)  │
+└───────────┘         └──────┬───────┘           └────────┬─────────┘
+      ▲                      │ CDP                        ▼
+      │               ┌──────┴───────┐             agent edits code,
+      └───────────────│ managed Chrome│◀── your app  then re-arms wait
+                      └──────────────┘
 ```
 
-### 2. Start Bridge Server with Browser Sidecar
+## Quick Start (tutorial, zero-instrumentation sidecar)
+
+You need Node.js and Chrome installed. Your app only has to be reachable at a URL (for example a dev server on `http://localhost:5173`).
+
+> The published `debug-bridge-cli` on npm is 0.1.2 and has only the `connect` command (no `browser`, `design-mode`, or `skill` commands). This repo is 0.2.0. Until a new release is published, build the CLI from this repo (see [Development](#development)) and run it as `node packages/cli/dist/bin/cli.js`. The examples below write `debug-bridge` for either form.
+
+### 1. Open your app in the managed browser
 
 ```bash
-# Start the bridge server with managed browser sidecar
-PORT=4000
-debug-bridge connect --port $PORT --cdp --browser managed
-```
-
-### 3. Open Your Web App
-
-Navigate to any local or remote web app. No query parameters (`?session=`, `?port=`) are needed:
-
-```bash
-# Open URL in managed browser
 debug-bridge browser open "http://localhost:5173" --port 4000
 ```
 
-### 4. Inspect, Control, and Patch
+If no bridge is listening on that port, this command starts the bridge and the managed browser itself and keeps running (Ctrl+C stops both). Run it in its own terminal or in the background. If a bridge is already running (for example from `debug-bridge connect --cdp`), it just navigates. Design Mode turns on automatically. Page URLs stay clean, no `?session=` or `?port=` query parameters are needed.
+
+### 2. Inspect and control the page
 
 ```bash
-# Capture numbered interactive elements tree (@e1, @e2, ...)
-debug-bridge browser snapshot --port 4000
-
-# Click or fill elements by handle or selector
+debug-bridge browser snapshot --port 4000                     # numbered handles @e1, @e2, ...
 debug-bridge browser click @e1 --port 4000
 debug-bridge browser fill @e2 "user@example.com" --port 4000
-
-# Capture screenshot
 debug-bridge browser screenshot --out ./screenshot.png --port 4000
-
-# Inject temporary CSS preview patch
 debug-bridge browser preview-patch --css "button { background: #2563eb !important; }" --port 4000
 ```
 
-### 5. In-Browser Design Mode (cmux-style)
+### 3. Receive change requests from the dock
+
+In a second terminal, block until the dock's **Send** fires:
 
 ```bash
-# Enable in-browser Design Mode
-debug-bridge browser design-mode enable --port 4000
-
-# Inspect selections and triggered tweaks
-debug-bridge browser design-mode status --port 4000
-
-# Inject live quick render preview styles
-debug-bridge browser design-mode quick-render --port 4000
-
-# Copy formatted batch prompt for agent to clipboard
-debug-bridge browser design-mode copy-prompt -r "Make header navy and enlarge CTA" --port 4000
+debug-bridge browser wait --port 4000
 ```
 
----
+Select an element in the browser, type a change in the dock, press **Send**. `wait` prints the request and exits `0`. After handling it, tell the dock you are finished with `debug-bridge browser design-mode done "Made the CTA larger" --port 4000 --session default`. See [docs/agent-loop.md](./docs/agent-loop.md) for how an agent runs this in a loop.
 
-## Alternative: Optional Embedded Browser SDK
+## Documentation map
 
-For projects that want in-app telemetry or custom state providers directly inside their source tree:
+| Need | Document | Type |
+|------|----------|------|
+| Run the agent loop (open, arm wait, re-arm, handle, report done) | [docs/agent-loop.md](./docs/agent-loop.md) | How-to |
+| Stop prompts landing in the wrong tmux pane | [docs/tmux-injection.md](./docs/tmux-injection.md) | How-to |
+| Every CLI command, flag, exit code, env var | [docs/cli-reference.md](./docs/cli-reference.md) | Reference |
+| The Design Mode dock, status pill, artifacts | [docs/design-mode-dock.md](./docs/design-mode-dock.md) | Reference |
+| Persistent profiles, storage state, privacy | [docs/browser-profiles.md](./docs/browser-profiles.md) | How-to |
+| Feedback batches and the feedback MCP server | [docs/ui-feedback-annotation.md](./docs/ui-feedback-annotation.md) | Reference |
+| How the pieces fit together | [docs/architecture.md](./docs/architecture.md) | Explanation |
+| Validate the sidecar end to end | [docs/cdp-sidecar-demo.md](./docs/cdp-sidecar-demo.md) | How-to |
+| Cut a release / publish the plugin | [docs/releasing.md](./docs/releasing.md) | How-to |
+| Wire protocol (SDK app messages; sidecar messages are in `packages/types/src/messages/browser.ts`) | [spec.md](./spec.md) | Reference |
+
+## Packages
+
+| Package | Description | Status |
+|---------|-------------|--------|
+| [`debug-bridge-cli`](./packages/cli/README.md) | CLI: bridge server, browser commands, `browser wait` | Repo 0.2.0, npm 0.1.2 |
+| `debug-bridge-browser-sidecar` | Playwright CDP sidecar provider (used by the CLI) | Workspace package |
+| [`debug-bridge-skill`](./packages/skill/README.md) | Skill installer package | Not published to npm |
+| `debug-bridge-feedback-mcp` | MCP server for feedback batches | Workspace package |
+| [`debug-bridge-browser`](./packages/browser/README.md) | Optional in-app SDK and the Design Mode runtime | Optional |
+| [`debug-bridge-types`](./packages/types/README.md) | TypeScript protocol definitions | Shared |
+
+Check what is actually on npm with `npm view <name> version` before running an install command from this table.
+
+## How It Works
+
+1. **Zero-instrumentation sidecar (default).** The bridge server and a Playwright CDP sidecar control any web app from outside. Handles, screenshots, console, network, and cookies all come over CDP.
+2. **Design Mode dock.** The sidecar injects a dock into every page it opens. It supports element selection, drawing, quick-render CSS previews, and Send to agent. Details in [docs/design-mode-dock.md](./docs/design-mode-dock.md).
+3. **Agent inbox.** `debug-bridge browser wait` is the agent's listener for Send. Optionally the sidecar also types the prompt into a tmux pane when Send is pressed ([docs/tmux-injection.md](./docs/tmux-injection.md)).
+4. **Embedded SDK (optional).** For apps that want custom state providers or in-app telemetry. Not needed for the flow above.
+
+## Optional: Embedded Browser SDK
+
+Only needed for custom state providers and in-app telemetry. The sidecar flow does not require it.
 
 ```bash
 npm install debug-bridge-browser
 ```
 
 ```typescript
-// src/debug-bridge.ts
 import { createDebugBridge } from 'debug-bridge-browser';
 
-// Auto-connects in DEV without requiring query parameters
 if (import.meta.env.DEV) {
   const bridge = createDebugBridge({
     url: 'ws://localhost:4000/debug?role=app&sessionId=default',
     sessionId: 'default',
     appName: 'My App',
   });
-
   bridge.connect();
 }
 ```
 
-> **Note**: Page URLs stay clean (`http://localhost:5173/`). Query parameters like `?session=` or `?port=` are never required.
-
-
-## Packages
-
-| Package | Description | Install |
-|---------|-------------|---------|
-| `debug-bridge-cli` | CLI with WebSocket server & browser commands | `npm install -g debug-bridge-cli` |
-| `debug-bridge-skill` | Universal skill installer for Claude, Gemini, Cursor, Codex | `npx skills add stevengonsalvez/agent-bridge --skill debug-bridge -g` |
-| `debug-bridge-browser-sidecar` | Playwright-driven CDP sidecar provider | `npm install debug-bridge-browser-sidecar` |
-| `debug-bridge-feedback-mcp` | MCP server for Claude Code and agent runners | `npm install debug-bridge-feedback-mcp` |
-| `debug-bridge-browser` | Optional in-app browser SDK | `npm install debug-bridge-browser` |
-| `debug-bridge-types` | TypeScript protocol definitions | `npm install debug-bridge-types` |
-
-## How It Works
-
-```
-┌─────────────────┐       CDP / WS       ┌─────────────────┐       CDP / DOM      ┌─────────────────┐
-│    AI Agent     │ ◄──────────────────► │  Debug Bridge   │ ◄──────────────────► │ Target Browser  │
-│ (Claude/Codex)  │                      │ (Server+Sidecar)│                      │ (Pure Sidecar)  │
-└─────────────────┘                      └─────────────────┘                      └─────────────────┘
-```
-
-1. **Zero-Instrumentation (Default)**: Playwright CDP sidecar controls any web app directly from outside. URLs remain clean (`http://localhost:5173/`) without query parameters.
-2. **Design Mode (cmux-style)**: Injected inspector overlay supporting multi-element batching (`@e1`, `@e2`), live quick render style patches, and one-click copy prompt formatting.
-3. **Optional In-App SDK**: For teams wanting custom state providers or embedded feedback launcher inside development builds.
-
-
-## Browser SDK Configuration
-
-```typescript
-const bridge = createDebugBridge({
-  // Required
-  url: 'ws://localhost:4000/debug?role=app&sessionId=myapp',
-  sessionId: 'myapp',
-
-  // Optional
-  appName: 'My App',
-  appVersion: '1.0.0',
-  enableEval: false,              // Enable JavaScript execution (security risk)
-  enableDomSnapshot: true,        // Send DOM snapshots
-  enableDomMutations: true,       // Track DOM changes
-  enableUiTree: true,             // Build interactive element tree
-  enableConsole: true,            // Forward console logs
-  enableErrors: true,             // Forward errors
-
-  // Custom state provider (for auth, cart, etc.)
-  getCustomState: () => ({
-    user: { id: '123', name: 'John' },
-    cart: { items: 3 },
-  }),
-
-  // Custom stable ID generator for elements
-  getStableId: (el) => el.getAttribute('data-testid'),
-
-  // Callbacks
-  onConnect: () => console.log('Connected'),
-  onDisconnect: () => console.log('Disconnected'),
-  onError: (err) => console.error(err),
-});
-```
-
-## CLI Commands
-
-| Command | Description |
-|---------|-------------|
-| `ui` / `tree` | Get interactive UI elements |
-| `find <query>` | Search cached UI tree |
-| `click <id>` | Click element by stableId |
-| `type <id> <text>` | Type text into element |
-| `eval <code>` / `js` | Execute JavaScript |
-| `snapshot` / `dom` | Get full DOM HTML |
-| `screenshot` / `ss` | Capture viewport |
-| `state [scope]` | Get application state |
-| `navigate <url>` / `go` | Navigate to URL |
-| `focus <id>` | Focus an element |
-| `scroll <x> <y>` | Scroll to position |
-| `clear` | Clear console |
-| `help` / `?` | Show help |
+All options are listed in [packages/browser/README.md](./packages/browser/README.md).
 
 ## AI Agent Integration
 
-Debug Bridge includes a skill/plugin system for seamless integration with AI coding assistants.
-
-### Installation for AI Assistants
-
-#### Universal: Install from this repo (Recommended)
+### Install the skill
 
 Install the Debug Bridge skill straight from GitHub into every agent (Claude Code, Codex, Cursor, Gemini/Antigravity, OpenCode and more) with the [`skills`](https://www.npmjs.com/package/skills) CLI:
 
 ```bash
-# Global: ~/.agents/skills/debug-bridge, symlinked into ~/.claude/skills
+# Global: installs into ~/.agents/skills/debug-bridge and links agents as needed
 npx skills add stevengonsalvez/agent-bridge --skill debug-bridge -g -y
 
 # Current project only
 npx skills add stevengonsalvez/agent-bridge --skill debug-bridge -y
 ```
 
-This always installs the `SKILL.md` from `master`; re-run it to update.
+This installs `SKILL.md` from `master`; re-run it to update.
 
-#### npm Installer (not yet published)
+`debug-bridge-skill` is not published to npm, so `npx debug-bridge-skill` does not work today, and the published 0.1.2 CLI has no `skill` command. Use the `npx skills add` commands above. See [packages/skill/README.md](./packages/skill/README.md).
 
-Once `debug-bridge-skill` is published to npm:
-
-```bash
-npx debug-bridge-skill
-```
-
-Or if `debug-bridge-cli` is installed:
+#### Claude Code plugin marketplace (alternative)
 
 ```bash
-debug-bridge skill install
-```
-
-Options:
-- `npx debug-bridge-skill --project` : Install locally to current repository (`.claude`, `.cursor`, `.github`)
-- `npx debug-bridge-skill --agent claude,gemini` : Target specific assistants
-- `npx debug-bridge-skill status` : Inspect skill installation status
-- `npx debug-bridge-skill print \| claude` : Pipe skill instructions directly to Claude Code
-
-#### Claude Code (Marketplace Alternative)
-
-```bash
-# 1. Add the agent-bridge marketplace
 /plugin marketplace add stevengonsalvez/agent-bridge
-
-# 2. Install the debug-bridge plugin
 /plugin install debug-bridge@agent-bridge-marketplace
 ```
 
-After installation, trigger the skill by saying:
-- "Debug the app"
-- "Inspect the UI"
-- "Take a screenshot of the page"
-- "Click the login button"
-- "Automate this workflow"
+After installation, trigger the skill with phrases such as "debug the app", "inspect the UI", "design mode", "take a screenshot of the page".
 
-### Skill Documentation
+### What the skill makes the agent do
 
-See [`skills/debug-bridge/SKILL.md`](./skills/debug-bridge/SKILL.md) for complete documentation including:
-- All available commands with parameters
-- Error handling and recovery patterns
-- Workflow examples (login, form filling, etc.)
-- Troubleshooting guide
+The skill ([`skills/debug-bridge/SKILL.md`](./skills/debug-bridge/SKILL.md)) requires the agent to arm the inbox on every run, so you never have to go back to the chat and ask "did you get it?":
+
+```
+open page ─▶ arm `browser wait` (background) ─▶ request arrives (exit 0)
+                    ▲                                     │
+                    └──── 1. re-arm wait ◀────────────────┤
+                                                          ▼
+                          2. apply + verify ─▶ 3. design-mode done "<summary>"
+```
+
+Full walkthrough: [docs/agent-loop.md](./docs/agent-loop.md).
 
 ### Programmatic WebSocket API
 
-For direct programmatic control, connect via WebSocket:
+`browser wait` is a thin client over the bridge WebSocket. Connect as an agent listener and watch for `browser_design_mode_submit` messages:
 
 ```javascript
-const ws = new WebSocket('ws://localhost:4000/debug?role=agent&sessionId=myapp');
+import { WebSocket } from 'ws';
 
-// Get UI tree
-ws.send(JSON.stringify({
-  type: 'request_ui_tree',
-  requestId: '1',
-  protocolVersion: 1,
-  sessionId: 'myapp',
-  timestamp: Date.now()
-}));
-
-// Click element
-ws.send(JSON.stringify({
-  type: 'click',
-  target: { stableId: 'login-button' },
-  requestId: '2',
-  protocolVersion: 1,
-  sessionId: 'myapp',
-  timestamp: Date.now()
-}));
-
-// Type text with options
-ws.send(JSON.stringify({
-  type: 'type',
-  target: { stableId: 'email-input' },
-  text: 'user@example.com',
-  options: { clear: true, pressEnter: false },
-  requestId: '3',
-  protocolVersion: 1,
-  sessionId: 'myapp',
-  timestamp: Date.now()
-}));
-
-// Take screenshot
-ws.send(JSON.stringify({
-  type: 'request_screenshot',
-  fullPage: true,
-  requestId: '4',
-  protocolVersion: 1,
-  sessionId: 'myapp',
-  timestamp: Date.now()
-}));
+const ws = new WebSocket('ws://localhost:4000/debug?role=agent&listener=1&sessionId=default');
+ws.on('message', (raw) => {
+  const msg = JSON.parse(raw.toString());
+  if (msg.type === 'browser_design_mode_submit') console.log(msg.requestedChange, msg.url);
+});
 ```
 
-### Available Commands
-
-| Command | Description | Key Parameters |
-|---------|-------------|----------------|
-| `request_ui_tree` | Get interactive elements | - |
-| `click` | Click element | `target: { stableId?, selector?, text? }` |
-| `type` | Type text | `target, text, options: { clear?, delay?, pressEnter? }` |
-| `hover` | Hover over element | `target` |
-| `select` | Select dropdown option | `target, value?, label?, index?` |
-| `focus` | Focus element | `target` |
-| `scroll` | Scroll page/element | `target?, x?, y?` |
-| `navigate` | Go to URL | `url` |
-| `evaluate` | Execute JavaScript | `code` |
-| `request_screenshot` | Capture viewport | `selector?, fullPage?` |
-| `request_state` | Get cookies/localStorage | `scope?` |
-| `request_dom_snapshot` | Get full HTML | - |
-
-### Error Handling
-
-Commands return structured error responses:
-
-```json
-{
-  "type": "command_result",
-  "success": false,
-  "error": {
-    "code": "TARGET_NOT_FOUND",
-    "message": "Element not found"
-  }
-}
-```
-
-Error codes: `TARGET_NOT_FOUND`, `TARGET_NOT_VISIBLE`, `TARGET_DISABLED`, `TIMEOUT`, `EVAL_DISABLED`, `EVAL_ERROR`, `NAVIGATION_FAILED`, `INVALID_COMMAND`
-
-## Documentation
-
-- [Protocol Specification](./spec.md)
-- [Architecture](./docs/architecture.md)
+Sidecar and `browser_*` message shapes are in [`packages/types/src/messages/browser.ts`](./packages/types/src/messages/browser.ts) (see also [packages/types](./packages/types/README.md)). [spec.md](./spec.md) covers the SDK app protocol only.
 
 ## Development
 
 ```bash
-# Install dependencies
 pnpm install
-
-# Build all packages
-pnpm run build
-
-# Run in development mode
-pnpm run dev
+pnpm run build        # build all packages (turbo)
+pnpm run type-check
+pnpm test             # type-check, build, then the scripted validations
 ```
 
-## Plugin Publishing
+Run the built CLI without installing it:
 
-### How Publishing Works
+```bash
+node packages/cli/dist/bin/cli.js --help
+```
 
-Debug Bridge uses **GitHub as a plugin marketplace**. There's no central registry - your GitHub repository acts as the distribution source.
-
-**Publishing Flow:**
-
-1. **Create Plugin Structure** (already done ✅)
-   ```
-   .claude-plugin/
-   ├── plugin.json        # Plugin metadata
-   └── marketplace.json   # Marketplace catalog
-   skills/
-   └── debug-bridge/      # Skill implementation
-   ```
-
-2. **Push to GitHub**
-   ```bash
-   git add .claude-plugin/ skills/
-   git commit -m "feat: add Claude Code plugin"
-   git push origin main
-   ```
-
-3. **Users Install**
-   ```bash
-   # Add your marketplace
-   /plugin marketplace add stevengonsalvez/agent-bridge
-
-   # Install the plugin
-   /plugin install debug-bridge@agent-bridge-marketplace
-   ```
-
-### Version Management
-
-- Use semantic versioning in `.claude-plugin/plugin.json`
-- Update version for each release:
-  ```json
-  {
-    "version": "0.2.0"  // Update this
-  }
-  ```
-- Tag releases in Git:
-  ```bash
-  git tag v0.2.0
-  git push origin v0.2.0
-  ```
-
-### No Approval Required
-
-- No review process by Anthropic
-- You control the release cycle
-- Users pull updates when they reinstall
-
-### Distribution Methods
-
-| Method | Use Case | Installation |
-|--------|----------|--------------|
-| **GitHub Marketplace** | Public distribution | `/plugin marketplace add owner/repo` |
-| **Local Development** | Testing, development | `claude --plugin-dir ./path` |
-| **Manual Copy** | Team sharing, private use | Copy to `~/.claude/plugins/` |
+Sample app for manual testing: [apps/sample-react-app/README.md](./apps/sample-react-app/README.md).
 
 ## License
 
