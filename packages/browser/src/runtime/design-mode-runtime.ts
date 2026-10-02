@@ -94,6 +94,8 @@ import html2canvas from 'html2canvas-pro';
   let isPromptBarCollapsed = false;
   let lastRenderedVertical: boolean | null = null;
   let bridgeConnected = false;
+  // Set by the CDP sidecar while an agent is parked on `debug-bridge browser wait`
+  let agentListening = false;
   let currentAgentStatus: {
     status: 'idle' | 'working' | 'done' | 'error';
     message?: string;
@@ -480,7 +482,7 @@ import html2canvas from 'html2canvas-pro';
     const activeSel = selIndex >= 0 ? selections[selIndex] : null;
 
     const renderAgentStatusPill = (extraClass = '') => {
-      const isOnline = isBridgeConnected();
+      const isOnline = agentListening || isBridgeConnected();
       if (currentAgentStatus.status === 'working') {
         return `
           <div class="agent-status-pill ${extraClass} status-working" title="${escapeHtml(currentAgentStatus.message || 'Agent working on feedback...')}">
@@ -3490,6 +3492,11 @@ import html2canvas from 'html2canvas-pro';
       return getStoredGatewayKey();
     },
     getGatewayKey: () => getStoredGatewayKey(),
+    setAgentListening: (listening: boolean) => {
+      agentListening = listening;
+      renderOverlay();
+      return getSnapshot();
+    },
     setBridgeConnected: (connected: boolean) => {
       bridgeConnected = connected;
       renderOverlay();

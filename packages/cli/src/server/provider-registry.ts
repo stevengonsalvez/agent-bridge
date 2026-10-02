@@ -9,6 +9,8 @@ export type ClientRecord<TSocket> = {
   appId?: string;
   providerId?: string;
   providerType?: ProviderType;
+  /** Agent client parked on `browser wait`, i.e. someone will act on a Design Mode Send. */
+  listener?: boolean;
 };
 
 export class ProviderRegistry<TSocket> {
@@ -42,6 +44,10 @@ export class ProviderRegistry<TSocket> {
 
   agents(sessionId: string): ClientRecord<TSocket>[] {
     return this.values().filter((client) => client.sessionId === sessionId && client.role === 'agent');
+  }
+
+  listeners(sessionId: string): ClientRecord<TSocket>[] {
+    return this.agents(sessionId).filter((client) => client.listener);
   }
 
   providers(sessionId: string, providerType?: ProviderType): ClientRecord<TSocket>[] {

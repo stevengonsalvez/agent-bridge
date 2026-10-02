@@ -63,6 +63,7 @@ export class PlaywrightProvider {
   private readonly networkRequests = new Map<string, NetworkRequestState>();
   private tmuxTarget?: string;
   private tmuxAutoEnter: boolean = true;
+  private agentListening = false;
 
   constructor(private readonly options: PlaywrightProviderOptions) {
     this.tmuxTarget = options.tmuxTarget;
@@ -170,6 +171,23 @@ export class PlaywrightProvider {
         },
         duration: Date.now() - started,
       });
+    }
+  }
+
+  /** Drive the dock's "Agent Ready" / "Offline" pill from whether an agent is parked on `browser wait`. */
+  async setAgentListening(listening: boolean): Promise<void> {
+    this.agentListening = listening;
+    await Promise.all([...this.targets.values()].map((target) => this.pushAgentListening(target.page)));
+  }
+
+  private async pushAgentListening(page: Page): Promise<void> {
+    try {
+      await page.evaluate((listening) => {
+        const api = (window as unknown as { __agentBridgeDesignMode?: { setAgentListening?: (l: boolean) => void } }).__agentBridgeDesignMode;
+        api?.setAgentListening?.(listening);
+      }, this.agentListening);
+    } catch {
+      // Ignore navigation or closed page
     }
   }
 
@@ -725,6 +743,7 @@ export class PlaywrightProvider {
         const api = (window as unknown as { __agentBridgeDesignMode?: { enable?: () => unknown } }).__agentBridgeDesignMode;
         api?.enable?.();
       });
+      await this.pushAgentListening(page);
     } catch {
       // Ignore navigation or closed page
     }

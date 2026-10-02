@@ -399,7 +399,7 @@ export function registerBrowserCommands(program: Command): void {
     .option('--timeout <ms>', 'Give up after this many ms', '1800000')
     .option('--json', 'Output raw submit message as JSON', false)
     .action((opts) => {
-      const url = `ws://localhost:${parseInt(opts.port, 10)}/debug?role=agent&sessionId=${encodeURIComponent(opts.session)}`;
+      const url = `ws://localhost:${parseInt(opts.port, 10)}/debug?role=agent&listener=1&sessionId=${encodeURIComponent(opts.session)}`;
       const ws = new WebSocket(url);
       const timer = setTimeout(() => {
         console.error(`TIMEOUT: no Design Mode request after ${opts.timeout}ms`);

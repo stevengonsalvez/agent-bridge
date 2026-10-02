@@ -101,6 +101,7 @@ export function startServer(config: CliConfig, callbacks: ServerCallbacks): Debu
       appId: clientRole === 'app' ? appId : undefined,
       providerId: clientRole === 'provider' ? providerId ?? `provider-${Date.now()}` : undefined,
       providerType: clientRole === 'provider' ? providerType ?? 'cdp' : undefined,
+      listener: clientRole === 'agent' && url.searchParams.get('listener') === '1',
     };
     clients.set(ws, client);
 
@@ -119,7 +120,13 @@ export function startServer(config: CliConfig, callbacks: ServerCallbacks): Debu
       connectedApps: getApps(sessionId).map(c => c.appId!),
       connectedProviders: clients.providers(sessionId).map(c => ({ providerId: c.providerId, providerType: c.providerType })),
       connectedAgents: clients.agents(sessionId).length,
+      connectedListeners: clients.listeners(sessionId).length,
     };
+
+    // A provider that connects after a listener needs the current listener count too
+    if (clientRole === 'provider') {
+      ws.send(JSON.stringify(connEvent));
+    }
 
     // Broadcast connection event to all in session except sender
     for (const [clientWs, c] of clients.entries()) {
@@ -231,6 +238,7 @@ export function startServer(config: CliConfig, callbacks: ServerCallbacks): Debu
           appId: client.role === 'app' ? client.appId : undefined,
           providerId: client.role === 'provider' ? client.providerId : undefined,
           providerType: client.role === 'provider' ? client.providerType : undefined,
+          connectedListeners: clients.listeners(client.sessionId).length,
         };
 
         for (const [clientWs, c] of clients.entries()) {
