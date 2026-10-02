@@ -44,6 +44,37 @@ Debug Bridge provides autonomous browser control, visual feedback annotations, a
 
 ---
 
+## MANDATORY: Arm the Agent Inbox on Every Run
+
+Whenever this skill opens a page, the agent MUST be listening for change requests sent from the Design Mode dock (**Send**). The user should never have to come back to the chat and ask "did you get it?". Starting the bridge without arming the inbox counts as an incomplete run.
+
+```
+┌──────────┐  Send   ┌──────────────┐  submit   ┌────────────────────────┐
+│ dock     │───────▶│ bridge :PORT │─────────▶│ browser wait (agent)   │
+└──────────┘        └──────────────┘           │ exits 0, wakes agent   │
+                                               └───────────┬────────────┘
+                                                           ▼
+                                               apply change, re-arm wait
+```
+
+1. **Start the bridge with tmux injection off.** The `wait` loop is how requests reach you, so injection would only duplicate them. Worse, in `auto` mode the sidecar picks any sibling pane and types the prompt into it (for example a dev server's stdin). Harness shells usually don't keep env vars between commands, so set it on the same command line:
+   ```bash
+   AGENT_BRIDGE_TMUX_TARGET=none debug-bridge connect --port 4000 --session default --cdp --browser managed
+   ```
+   Run `connect` in its own tmux window or background job (it holds the terminal), then `browser open` in another.
+2. **Arm the watcher immediately after `browser open`**, as a background job the harness tracks (Claude Code: Bash `run_in_background: true`; other harnesses: a background shell whose exit you are notified of):
+   ```bash
+   debug-bridge browser wait --port 4000 --session default --timeout 1800000
+   ```
+   Exit codes: `0` request received (change, page URL, screenshot and context paths printed), `1` timeout, `2` bridge down.
+3. **On exit 0**: read the printed artifacts (the screenshot and the `context_json_path`, which holds the selected element's selector, XPath and DOM snippet), apply the change in source, verify with `browser screenshot`, then **re-arm step 2 straight away**.
+4. **On exit 1**: re-arm (the user is still reviewing). **On exit 2**: the bridge died; restart it, then re-arm.
+5. Stop the loop only when the user ends the session or the bridge is shut down.
+
+The watcher is single-shot by design: one request, one wake. Re-arm before doing anything slow so you don't miss the next Send.
+
+---
+
 ## Operating Modes
 
 ### Mode 1: Zero-Instrumentation Browser Sidecar (Recommended Default)

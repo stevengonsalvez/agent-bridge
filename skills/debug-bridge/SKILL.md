@@ -57,13 +57,14 @@ Whenever this skill opens a page, the agent MUST be listening for change request
                                                apply change, re-arm wait
 ```
 
-1. **Disable tmux auto-injection unless the agent itself runs in tmux.** In `auto` mode the sidecar picks any sibling pane and types the prompt into it (for example a dev server's stdin). Set the target before starting the bridge:
+1. **Start the bridge with tmux injection off.** The `wait` loop is how requests reach you, so injection would only duplicate them. Worse, in `auto` mode the sidecar picks any sibling pane and types the prompt into it (for example a dev server's stdin). Harness shells usually don't keep env vars between commands, so set it on the same command line:
    ```bash
-   export AGENT_BRIDGE_TMUX_TARGET="${TMUX_PANE:-none}"
+   AGENT_BRIDGE_TMUX_TARGET=none debug-bridge connect --port 4000 --session default --cdp --browser managed
    ```
+   Run `connect` in its own tmux window or background job (it holds the terminal), then `browser open` in another.
 2. **Arm the watcher immediately after `browser open`**, as a background job the harness tracks (Claude Code: Bash `run_in_background: true`; other harnesses: a background shell whose exit you are notified of):
    ```bash
-   debug-bridge browser wait --port $PORT --session $SESSION --timeout 1800000
+   debug-bridge browser wait --port 4000 --session default --timeout 1800000
    ```
    Exit codes: `0` request received (change, page URL, screenshot and context paths printed), `1` timeout, `2` bridge down.
 3. **On exit 0**: read the printed artifacts (the screenshot and the `context_json_path`, which holds the selected element's selector, XPath and DOM snippet), apply the change in source, verify with `browser screenshot`, then **re-arm step 2 straight away**.
