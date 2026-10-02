@@ -66,7 +66,7 @@ Whenever this skill opens a page, the agent MUST be listening for change request
    ```bash
    debug-bridge browser wait --port 4000 --session default --timeout 1800000
    ```
-   Exit codes: `0` request received (change, page URL, screenshot and context paths printed), `1` timeout, `2` bridge down.
+   Exit codes: `0` request received (change, page URL, screenshot and context paths printed), `1` timeout, `2` bridge down, `64` bad arguments (fix the command, don't re-arm it unchanged).
 3. **On exit 0**: **re-arm step 2 first** so the next Send isn't missed. Then read the printed artifacts (the screenshot and the `context_json_path`, which holds the selected element's selector, XPath and DOM snippet), apply the change in source, and verify with `browser screenshot`.
    The dock shows **Working** from the moment the user presses Send. Close the loop so it doesn't stay on Working:
    ```bash
@@ -74,10 +74,10 @@ Whenever this skill opens a page, the agent MUST be listening for change request
    # or, if you could not apply it:
    debug-bridge browser design-mode error "Selector not found in source" --port 4000 --session default
    ```
-4. **On exit 1**: re-arm (the user is still reviewing). **On exit 2**: the bridge died; restart it, then re-arm.
+4. **On exit 1**: re-arm (the user is still reviewing). **On exit 2**: the bridge died; restart it, then re-arm. **On exit 64**: your `wait` command is wrong; fix it.
 5. Stop the loop only when the user ends the session or the bridge is shut down.
 
-The watcher is single-shot by design: one request, one wake. Re-arm before doing anything slow so you don't miss the next Send.
+The watcher is single-shot by design: one request, one wake. If a Send arrives between runs, the bridge keeps the latest one for your next `wait`. Re-arm before doing anything slow, because only the latest unclaimed Send is kept.
 
 ---
 
