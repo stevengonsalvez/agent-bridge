@@ -4,95 +4,80 @@ CLI for debug-bridge: WebSocket server, autonomous browser control, and in-brows
 
 ## Installation
 
-```bash
-npm install -g debug-bridge-cli
-```
-
-Or run directly with npx:
+The npm release `debug-bridge-cli@0.1.2` has only the `connect` command (no `browser`, `design-mode`, or `skill`); this repo is 0.2.0. Build from the repo until a new release is published:
 
 ```bash
-npx debug-bridge-cli connect --port 4000 --cdp --browser managed
+pnpm install && pnpm run build
+node packages/cli/dist/bin/cli.js --help
 ```
+
+The examples below write `debug-bridge` for that binary. (`npm install -g debug-bridge-cli` installs 0.1.2, which lacks these commands.)
 
 ## Quick Start (Zero-Instrumentation Sidecar)
 
-No changes to your web application are required.
+No changes to your web application are required. Full command reference: [docs/cli-reference.md](../../docs/cli-reference.md).
 
-### 1. Start Server with Browser Sidecar
-
-```bash
-debug-bridge connect --port 4000 --cdp --browser managed
-```
-
-Key Options:
-- `-p, --port <number>`: Port to listen on (default: 4000)
-- `-s, --session <string>`: Internal bridge session ID for multiplexing (default: 'default')
-- `--cdp`: Enable Chrome DevTools Protocol sidecar provider
-- `--browser <mode>`: Browser sidecar mode: `managed`, `connect`, or `none` (default: `managed`)
-- `--headless`: Run managed browser headlessly (default: true)
-- `--headed`: Run managed browser with a visible window
-- `--json`: Output JSON for agent automation
-
-> **Important**: The `--session` flag is an internal multiplexing identifier between the CLI and bridge server. Browser URLs require NO query parameters (`?session=` or `?port=`).
-
-### 2. Open App in Managed Browser
+### 1. Open your app in the managed browser
 
 ```bash
 debug-bridge browser open "http://localhost:5173" --port 4000
 ```
 
-### 3. Inspect, Click, and Patch
+If nothing is listening on the port, this starts the bridge and a managed Chrome in the same process and keeps running. Design Mode turns on automatically.
+
+To run the bridge separately, use `connect`:
 
 ```bash
-# Capture numbered interactive elements tree (@e1, @e2, ...)
-debug-bridge browser snapshot --port 4000
+debug-bridge connect --port 4000 --cdp --browser managed
+```
 
-# Click or fill elements by handle
+Key options: `-p, --port` (default 4000), `-s, --session` (default `default`), `--cdp`, `--browser managed|connect|none` (default `managed`), `--headed` (default) / `--headless`, `--profile`, `--json`. The `--session` flag is an internal multiplexing identifier; browser URLs need no query parameters.
+
+### 2. Inspect, click, and patch
+
+```bash
+debug-bridge browser snapshot --port 4000          # @e1, @e2, ...
 debug-bridge browser click @e1 --port 4000
 debug-bridge browser fill @e2 "user@example.com" --port 4000
-
-# Capture screenshot
 debug-bridge browser screenshot --out ./screenshot.png --port 4000
-
-# Inject temporary CSS preview patch
 debug-bridge browser preview-patch --css "button { background: #2563eb !important; }" --port 4000
 ```
 
-### 4. In-Browser Design Mode (Floating Palette)
+### 3. Receive requests from the Design Mode dock
 
 ```bash
-# Enable in-browser Design Mode
-debug-bridge browser design-mode enable --port 4000
+debug-bridge browser wait --port 4000 --session default
+```
 
-# Check status and current multi-element selections
+Blocks until **Send** is pressed in the dock. Exit `0`: request received (change, page URL, artifact paths, and prompt are printed). Exit `1`: timeout (`--timeout`, default 1800000 ms). Exit `2`: bridge unreachable or closed. It is single-shot, so agents re-arm it first after each request, then handle it, then report back with `debug-bridge browser design-mode done "<summary>"` (or `error`) so the dock leaves its Working state ([docs/agent-loop.md](../../docs/agent-loop.md)).
+
+When an agent runs the `wait` loop, start the bridge with tmux injection off so prompts are not typed into another pane or delivered twice ([docs/tmux-injection.md](../../docs/tmux-injection.md)):
+
+```bash
+AGENT_BRIDGE_TMUX_TARGET=none debug-bridge connect --port 4000 --cdp --browser managed
+```
+
+### 4. Design Mode from the CLI
+
+```bash
 debug-bridge browser design-mode status --port 4000
-
-# Quick Render live styles into page
 debug-bridge browser design-mode quick-render --port 4000
-
-# Copy formatted prompt for agent to clipboard
 debug-bridge browser design-mode copy-prompt -r "Make header navy and enlarge CTA" --port 4000
 ```
 
-### 5. Install AI Agent Skill
+### 5. Install the AI agent skill
 
-Install the Debug Bridge skill into Claude Code, Gemini / Antigravity, Cursor, Codex, or OpenCode:
+Use the `skills` CLI, which installs the current `SKILL.md` from this repo:
 
 ```bash
-# Auto-detect and install globally
-debug-bridge skill install
-
-# Or via standalone npm package
-npx debug-bridge-skill
-
-# Check status
-debug-bridge skill status
+npx skills add stevengonsalvez/agent-bridge --skill debug-bridge -g -y
 ```
 
-### Interactive REPL Commands
+`debug-bridge-skill` is not published to npm, so `npx debug-bridge-skill` does not work. Prefer the command above.
 
+### Interactive REPL Commands (embedded-SDK apps)
 
-Once an app is connected, use these commands:
+After `debug-bridge connect`, an app running the optional `debug-bridge-browser` SDK can be driven from the prompt. These commands do not act on the sidecar browser (use `debug-bridge browser ...` for that):
 
 ```
 debug> ui                    # Get interactive UI elements
@@ -115,6 +100,7 @@ debug> help                  # Show all commands
 | `snapshot` | `dom` |
 | `screenshot` | `ss` |
 | `navigate` | `goto`, `go` |
+| `clear` | `cls` |
 | `find` | `search` |
 | `help` | `?` |
 
