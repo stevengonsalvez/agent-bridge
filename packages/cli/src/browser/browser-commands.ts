@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { Command } from 'commander';
+import { Command, InvalidArgumentError } from 'commander';
 import { WebSocket } from 'ws';
 import { sendBrowserCommand } from './browser-client';
 import { startServer } from '../server/websocket-server';
@@ -393,22 +393,31 @@ export function registerBrowserCommands(program: Command): void {
     });
 
   // Agent inbox: block until the Design Mode dock sends a change request, print it, exit.
-  // Exit codes: 0 = request received, 1 = timeout, 2 = bridge unreachable or closed.
+  // Exit codes: 0 = request received, 1 = timeout, 2 = bridge unreachable or closed, 64 = bad arguments.
   // ponytail: single-shot, a submit landing between exit and re-arm is missed; persist submits server-side if that bites.
   browserCmd
     .command('wait')
     .description('Block until Design Mode submits a change request, then print it and exit')
     .option('-p, --port <number>', 'Bridge port', '4000')
     .option('-s, --session <string>', 'Session ID', 'default')
-    .option('--timeout <ms>', 'Give up after this many ms', '1800000')
+    .option('--host <host>', 'Bridge host', 'localhost')
+    .option('--timeout <ms>', 'Give up after this many ms (max 2147483647)', (v: string) => {
+      // setTimeout fires at once on NaN or > 2^31-1, which would make the wait loop spin
+      if (!/^\d+$/.test(v) || Number(v) < 1 || Number(v) > 2_147_483_647) {
+        throw new InvalidArgumentError('must be whole milliseconds between 1 and 2147483647');
+      }
+      return Number(v);
+    }, 1_800_000)
     .option('--json', 'Output raw submit message as JSON', false)
+    // Usage errors exit 64, not 1: 1 means "timed out, re-arm", and a bad flag would make that loop spin
+    .exitOverride((err) => process.exit(err.code === 'commander.helpDisplayed' ? 0 : 64))
     .action((opts) => {
-      const url = `ws://localhost:${parseInt(opts.port, 10)}/debug?role=agent&listener=1&sessionId=${encodeURIComponent(opts.session)}`;
+      const url = `ws://${opts.host}:${parseInt(opts.port, 10)}/debug?role=agent&listener=1&sessionId=${encodeURIComponent(opts.session)}`;
       const ws = new WebSocket(url);
       const timer = setTimeout(() => {
         console.error(`TIMEOUT: no Design Mode request after ${opts.timeout}ms`);
         process.exit(1);
-      }, parseInt(opts.timeout, 10));
+      }, opts.timeout);
       const fail = (why: string) => {
         clearTimeout(timer);
         console.error(`BRIDGE DOWN: ${why} (${url})`);
@@ -437,7 +446,9 @@ export function registerBrowserCommands(program: Command): void {
           for (const [k, v] of Object.entries(msg.artifacts || {})) console.log(`${k}: ${Array.isArray(v) ? v.join(', ') : v}`);
           console.log(`\nPrompt:\n${msg.prompt}`);
         }
-        process.exit(0);
+        // No process.exit: stdout to a pipe is async and a long prompt would be cut off.
+        // The timer is cleared and the socket closed, so the process exits once output drains.
+        process.exitCode = 0;
       });
     });
 }
