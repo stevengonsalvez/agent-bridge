@@ -335,7 +335,7 @@ export function registerBrowserCommands(program: Command): void {
 
   browserCmd
     .command('design-mode [action] [subArg]')
-    .description('Control in-browser Design Mode (enable, disable, status, handoff, quick-render, copy-prompt, clear, done, error)')
+    .description('Control in-browser Design Mode (enable, disable, status, handoff, quick-render, copy-prompt, clear, done, error, working, idle)')
     .option('-r, --request <text>', 'Requested change description for handoff or prompt', '')
     .option('-t, --tool <tool>', 'Active tool (select, pen, rect, arrow, region, interact)')
     .option('--css <string>', 'Optional custom CSS patch for quick-render')
