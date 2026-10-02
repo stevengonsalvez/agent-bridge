@@ -2467,7 +2467,7 @@ import html2canvas from 'html2canvas-pro';
     const copyBtn = shadowRoot.querySelector<HTMLButtonElement>('[data-action="copy-prompt"]');
     if (copyBtn) {
       copyBtn.addEventListener('click', async () => {
-        const ok = await copyHandoffToClipboard(currentPromptText);
+        const ok = (await copyHandoffToClipboard(currentPromptText)).clipboardOk;
         copyBtn.innerHTML = ok ? '✓' : '!';
         copyBtn.style.color = ok ? '#4ade80' : '#f87171';
         setTimeout(() => {
