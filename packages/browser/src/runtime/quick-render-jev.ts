@@ -29,7 +29,7 @@ export interface QuickRenderResult {
   error?: string;
 }
 
-const resolveGatewayKey = (optionsKey?: string): string => {
+export const resolveGatewayKey = (optionsKey?: string): string => {
   if (optionsKey) return optionsKey;
   if (typeof globalThis !== 'undefined') {
     const globalKey = (globalThis as any).__agentBridgeGatewayKey;

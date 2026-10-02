@@ -6,7 +6,7 @@
  * and structured artifact clipboard handoff.
  */
 
-import { resolvePromptToCss } from './quick-render-jev';
+import { resolveGatewayKey, resolvePromptToCss } from './quick-render-jev';
 import html2canvas from 'html2canvas-pro';
 
 (() => {
@@ -481,6 +481,16 @@ import html2canvas from 'html2canvas-pro';
     const selIndex = activeElement ? selections.findIndex((s) => s.element === activeElement) : (selections.length ? selections.length - 1 : -1);
     const activeSel = selIndex >= 0 ? selections[selIndex] : null;
 
+    // Same lookup AI Render uses, so the badge can't disagree with what a render will do
+    const renderAiKeyBadge = () => {
+      const key = resolveGatewayKey();
+      if (!key) {
+        return `<span class="ai-key-badge ai-key-missing" data-ai-key="missing" title="No TypeSafe API key detected. AI Render falls back to heuristic CSS. Set TYPESAFE_API_KEY or paste a key in the ? panel.">⚠ No key</span>`;
+      }
+      const kind = key.startsWith('vck_') ? 'Vercel AI Gateway' : 'TypeSafe';
+      return `<span class="ai-key-badge ai-key-ok" data-ai-key="ok" title="${kind} key detected (…${escapeHtml(key.slice(-4))})"></span>`;
+    };
+
     const renderAgentStatusPill = (extraClass = '') => {
       const isOnline = agentListening || isBridgeConnected();
       if (currentAgentStatus.status === 'working') {
@@ -667,6 +677,25 @@ import html2canvas from 'html2canvas-pro';
         .btn-quick-render:hover { background: #1d4ed8; }
 
         /* Quick Render AI & Manual item wraps and buttons */
+        .ai-key-badge.ai-key-missing {
+          font-size: 10px;
+          font-weight: 700;
+          color: #fbbf24;
+          background: rgba(251, 191, 36, 0.12);
+          border: 1px solid rgba(251, 191, 36, 0.35);
+          border-radius: 9999px;
+          padding: 1px 6px;
+          white-space: nowrap;
+          cursor: help;
+        }
+        .ai-key-badge.ai-key-ok {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: #4ade80;
+          margin: 0 2px;
+          cursor: help;
+        }
         .render-item-wrap {
           display: inline-flex;
           align-items: center;
@@ -1851,6 +1880,7 @@ import html2canvas from 'html2canvas-pro';
             <button class="btn-action btn-quick-render btn-quick-render-ai" data-action="quick-render" data-action-ai="quick-render-ai" title="Quick Render (AI) with Jev">
               ⚡ AI Render
             </button>
+            ${renderAiKeyBadge()}
             <button class="help-question-btn ${activeInfo === 'ai' ? 'active' : ''}" data-action="toggle-info-ai" title="How Quick Render (AI) works with Jev">?</button>
           </div>
 
