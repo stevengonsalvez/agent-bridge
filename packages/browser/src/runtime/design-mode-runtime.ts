@@ -485,7 +485,7 @@ import html2canvas from 'html2canvas-pro';
     const renderAiKeyBadge = () => {
       const key = resolveGatewayKey();
       if (!key) {
-        return `<span class="ai-key-badge ai-key-missing" data-ai-key="missing" title="No TypeSafe or Vercel AI Gateway key detected. AI Render falls back to heuristic CSS. Set TYPESAFE_API_KEY or VERCEL_AI_GATEWAY_KEY, or paste a key in the ? panel.">⚠ No key</span>`;
+        return `<span class="ai-key-badge ai-key-missing" data-ai-key="missing" title="No TypeSafe or Vercel AI Gateway key found. AI Render falls back to heuristic CSS. Paste a key in the ? panel to enable it.">⚠ No key</span>`;
       }
       const kind = key.startsWith('vck_') ? 'Vercel AI Gateway' : 'TypeSafe';
       return `<span class="ai-key-badge ai-key-ok" data-ai-key="ok" title="${kind} key detected (…${escapeHtml(key.slice(-4))})"></span>`;
