@@ -2175,7 +2175,7 @@ import html2canvas from 'html2canvas-pro';
       }
 
       // 2. Generate screenshot artifacts, inject terminal, and copy prompt
-      const handoff = await copyHandoffToClipboard(currentPromptText);
+      const handoff = await copyHandoffToClipboard(currentPromptText, true);
 
       const currentSubmitBtns = shadowRoot?.querySelectorAll<HTMLButtonElement>('[data-action="submit-batch"], [data-action="submit"]') || [];
       currentSubmitBtns.forEach((btn) => {
@@ -3175,7 +3175,8 @@ import html2canvas from 'html2canvas-pro';
     terminalError?: string;
   };
 
-  const copyHandoffToClipboard = async (requestedChange?: string): Promise<HandoffResult> => {
+  // submit=true is Send: the host injects into the terminal and wakes `browser wait`. Copy buttons only copy.
+  const copyHandoffToClipboard = async (requestedChange?: string, submit = false): Promise<HandoffResult> => {
     const promptText = (requestedChange || currentPromptText).trim() || 'Design-mode context for the selected page elements.';
 
     // Ensure crops are captured for selections and region marks
@@ -3189,23 +3190,25 @@ import html2canvas from 'html2canvas-pro';
     const payload = getHandoffPayload(promptText);
 
     // Notify host or agent bridge
-    window.dispatchEvent(new CustomEvent('agent-bridge:handoff', { detail: payload }));
+    if (submit) window.dispatchEvent(new CustomEvent('agent-bridge:handoff', { detail: payload }));
     type HostHandoffResult = {
       success?: boolean;
+      artifacts?: { prompt?: string };
       terminalInjection?: { success: boolean; method: string; target?: string; error?: string };
     };
     let hostResult: HostHandoffResult | null = null;
     const host = (window as unknown as { __agentBridgeHost?: (msg: unknown) => Promise<unknown> | void }).__agentBridgeHost;
     if (typeof host === 'function') {
       try {
-        const res = await host({ type: 'design_mode_handoff', payload });
+        const res = await host({ type: submit ? 'design_mode_handoff' : 'design_mode_copy', payload });
         if (res && typeof res === 'object') {
           hostResult = res as HostHandoffResult;
         }
       } catch {}
     }
 
-    const text = getFormattedPrompt(promptText);
+    // Prefer the host's prompt: it references the screenshot artifacts it just wrote
+    const text = hostResult?.artifacts?.prompt || getFormattedPrompt(promptText);
     let ok = false;
     try {
       if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {

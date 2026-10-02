@@ -599,6 +599,11 @@ export class PlaywrightProvider {
             terminalInjection: injection,
           };
         }
+        if (msg?.type === 'design_mode_copy') {
+          // Copy only: write artifacts so the copied prompt can reference them, but don't inject or wake agents
+          const change = typeof msg.payload?.requested_change === 'string' ? msg.payload.requested_change : undefined;
+          return { success: true, artifacts: await this.generateDesignModeArtifacts(target, change) };
+        }
         return { success: false, error: 'Unknown message type' };
       });
     } catch {
