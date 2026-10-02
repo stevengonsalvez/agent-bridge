@@ -176,6 +176,7 @@ export class PlaywrightProvider {
 
   /** Drive the dock's "Agent Ready" / "Offline" pill from whether an agent is parked on `browser wait`. */
   async setAgentListening(listening: boolean): Promise<void> {
+    if (listening === this.agentListening) return; // new pages get it from autoEnableDesignMode
     this.agentListening = listening;
     await Promise.all([...this.targets.values()].map((target) => this.pushAgentListening(target.page)));
   }

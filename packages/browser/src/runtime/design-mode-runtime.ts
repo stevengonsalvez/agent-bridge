@@ -3529,7 +3529,21 @@ import html2canvas from 'html2canvas-pro';
       // Every agent connect/disconnect pushes this; re-rendering on a no-op wipes half-typed dock inputs
       if (agentListening === listening) return getSnapshot();
       agentListening = listening;
-      renderOverlay();
+      // Patch the pill in place: renderOverlay rebuilds the dock, dropping focus and unsaved input,
+      // and this flips on every request as `browser wait` exits and re-arms.
+      // Only the idle pill depends on listening; working/done/error ignore it.
+      if (currentAgentStatus.status === 'idle') {
+        const online = agentListening || isBridgeConnected();
+        shadowRoot?.querySelectorAll<HTMLElement>('.agent-status-pill').forEach((pill) => {
+          pill.classList.toggle('status-ready', online);
+          pill.classList.toggle('status-offline', !online);
+          pill.title = online ? 'Agent bridge online. Ready for browser feedback.' : 'Bridge offline. Prompts will copy to clipboard.';
+          const dot = pill.querySelector<HTMLElement>('.status-dot');
+          if (dot) dot.className = `status-dot ${online ? 'status-dot-ready' : 'status-dot-offline'}`;
+          const text = pill.querySelector<HTMLElement>('.status-text');
+          if (text) text.textContent = online ? 'Agent Ready' : 'Offline (Copy)';
+        });
+      }
       return getSnapshot();
     },
     setBridgeConnected: (connected: boolean) => {
