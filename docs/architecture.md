@@ -1,107 +1,88 @@
 # Debug Bridge Architecture
 
+Explanation of how the pieces fit together and why. For commands see [cli-reference](./cli-reference.md); for the agent workflow see [agent-loop](./agent-loop.md).
+
 ## System Overview
 
+The default setup is zero-instrumentation: nothing is added to your app. A Playwright CDP sidecar drives a managed Chrome from outside, the bridge server routes messages, and agents attach as clients.
+
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           AGENT (Claude Code)                                │
-│                                                                              │
-│   Sends commands via stdin ──────────────────────────────────────────┐      │
-│   Receives telemetry via stdout ◄────────────────────────────────────┤      │
-└──────────────────────────────────────────────────────────────────────┼──────┘
-                                                                       │
-                                                                       ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                           @debug-bridge/cli                                   │
-│                                                                               │
-│  ┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐  │
-│  │  WebSocket Server   │  │  Output Formatter   │  │  Stdin Handler      │  │
-│  │                     │  │                     │  │                     │  │
-│  │  • Listens for app  │  │  • JSON mode        │  │  • Parses commands  │  │
-│  │  • Routes messages  │  │  • Human REPL mode  │  │  • Validates input  │  │
-│  │  • Session mgmt     │  │  • Telemetry format │  │  • Forwards to app  │  │
-│  └─────────────────────┘  └─────────────────────┘  └─────────────────────┘  │
-│              ▲                                                                │
-└──────────────┼────────────────────────────────────────────────────────────────┘
-               │ WebSocket
-               │
-┌──────────────┴────────────────────────────────────────────────────────────────┐
-│                           BROWSER                                             │
-│                                                                               │
-│  ┌─────────────────────────────────────────────────────────────────────────┐ │
-│  │                    @debug-bridge/browser SDK                             │ │
-│  │                                                                          │ │
-│  │  ┌──────────────────────────────────────────────────────────────────┐   │ │
-│  │  │                    Telemetry Collectors                           │   │ │
-│  │  │                                                                   │   │ │
-│  │  │  • DOM Observer      - MutationObserver for DOM changes          │   │ │
-│  │  │  • UI Tree Builder   - Extracts interactive elements             │   │ │
-│  │  │  • Console Hook      - Intercepts console.log/warn/error         │   │ │
-│  │  │  • Error Hook        - Catches runtime errors & rejections       │   │ │
-│  │  │  • State Subscriber  - Connects to app state (Zustand/Redux)     │   │ │
-│  │  └──────────────────────────────────────────────────────────────────┘   │ │
-│  │                                                                          │ │
-│  │  ┌──────────────────────────────────────────────────────────────────┐   │ │
-│  │  │                    Command Executor                               │   │ │
-│  │  │                                                                   │   │ │
-│  │  │  • click, type, hover, focus, select                             │   │ │
-│  │  │  • navigate, scroll                                              │   │ │
-│  │  │  • evaluate (JS execution)                                       │   │ │
-│  │  │  • request_ui_tree, request_state, request_dom_snapshot          │   │ │
-│  │  └──────────────────────────────────────────────────────────────────┘   │ │
-│  └─────────────────────────────────────────────────────────────────────────┘ │
-│                                                                               │
-│  ┌─────────────────────────────────────────────────────────────────────────┐ │
-│  │                         Web Application                                  │ │
-│  │                    (React, Vue, Angular, etc.)                          │ │
-│  └─────────────────────────────────────────────────────────────────────────┘ │
-└───────────────────────────────────────────────────────────────────────────────┘
+┌────────────┐ WS role=agent ┌───────────────────────┐ WS role=provider ┌──────────────┐
+│  Agent     │◀─────────────▶│ Bridge server (:4000) │◀────────────────▶│ Sidecar      │
+│ browser *  │               │ packages/cli          │                  │ (Playwright) │
+│ browser    │               └───────────┬───────────┘                  └──────┬───────┘
+│  wait      │                           │ WS role=app (optional)              │ CDP
+└────────────┘                 ┌─────────┴─────────┐                           ▼
+                               │ Embedded SDK app  │                    ┌──────────────┐
+                               └───────────────────┘                    │ Managed      │
+                                                                        │ Chrome + dock│
+                                                                        └──────────────┘
 ```
 
----
+Roles on the bridge WebSocket (`/debug?role=...&sessionId=...`):
+
+| Role | Who | Notes |
+|------|-----|-------|
+| `agent` | CLI browser commands, `browser wait`, feedback MCP, scripts | `browser wait` adds `listener=1` so the bridge can count connected listeners |
+| `provider` | The CDP sidecar | Announces itself with `provider_hello`, executes `browser_*` commands |
+| `app` | Page running the optional embedded SDK | Telemetry and in-page commands |
+
+## The Send path
+
+```
+dock Send
+   │  page calls window.__agentBridgeHost (exposed by the sidecar)
+   ▼
+sidecar: write screenshots + context JSON, try tmux/cmux injection
+   │
+   ▼
+broadcast browser_design_mode_submit ─▶ bridge ─▶ every agent client on the session
+                                                  (`browser wait` exits 0)
+```
+
+Two delivery routes exist on purpose. Terminal injection (Send only; the copy buttons never inject) types the prompt into a pane for agents that live in a terminal. The WebSocket broadcast reaches any agent harness that can run a background command. Injection is best effort and can misfire in auto mode ([tmux-injection](./tmux-injection.md)); the broadcast is the dependable route.
+
+`browser wait` is single-shot. If a Send arrives while no `wait` is connected, the bridge keeps the latest one and hands it to the next `wait` that connects (only the latest; earlier unclaimed Sends are dropped). The skill still tells agents to re-arm first so a second Send isn't dropped.
 
 ## Package Responsibilities
 
-### @debug-bridge/types
+| Package | Role |
+|---------|------|
+| `debug-bridge-cli` (`packages/cli`) | `debug-bridge` binary: bridge WebSocket server, provider registry, feedback store, `browser` and `skill` commands, REPL |
+| `debug-bridge-browser-sidecar` (`packages/browser-sidecar`) | Playwright provider: managed or connected Chrome, profiles and storage state, Design Mode artifacts, tmux injector |
+| `debug-bridge-browser` (`packages/browser`) | Optional in-app SDK, feedback controller, and the Design Mode dock runtime |
+| `debug-bridge-feedback-mcp` (`packages/feedback-mcp`) | MCP server over stdio for feedback batches and browser tools |
+| `debug-bridge-skill` (`packages/skill`) | Skill installer package (not published to npm) |
+| `debug-bridge-types` (`packages/types`) | Protocol message and config types |
+| `apps/sample-react-app` | Test app exercising the SDK and the dock |
+
+Skills live in `skills/` at the repo root and are the installable artifact (`skills/debug-bridge/SKILL.md`).
+
+### debug-bridge-types
 
 Shared TypeScript definitions for the protocol.
 
 | Module | Purpose |
 |--------|---------|
-| `messages/base` | Base message structure with protocol version, session ID, timestamp |
-| `messages/connection` | Hello and capabilities handshake messages |
-| `messages/telemetry` | DOM snapshot, mutations, UI tree, console, errors, state updates |
-| `messages/commands` | All command types (click, type, navigate, etc.) |
-| `messages/results` | Command result structure with error codes |
-| `config` | CLI and browser SDK configuration types |
+| `messages/base`, `connection`, `telemetry`, `commands`, `results` | Core protocol: handshake, telemetry, app commands, results with error codes |
+| `messages/browser` | Sidecar `browser_*` commands, results, and `browser_design_mode_submit` |
+| `messages/design-mode`, `messages/feedback` | Design Mode and feedback batch messages |
+| `config` | CLI and SDK configuration types |
 | `utils` | Element targets, UI tree items, DOM mutations |
 
----
-
-### @debug-bridge/cli
-
-Command-line interface with embedded WebSocket server.
+### debug-bridge-cli
 
 | Component | Responsibility |
 |-----------|----------------|
-| **WebSocket Server** | Listens on configurable port, manages app connections, routes messages between app and agent |
-| **Session Manager** | Validates session IDs, ensures single app per session |
-| **Output Formatter** | Transforms internal messages to stdout (JSON mode for agents, human-readable for REPL) |
-| **Stdin Handler** | Parses incoming commands (JSON or simple text), validates, forwards to connected app |
-| **Telemetry Receiver** | Receives telemetry from app, formats and outputs to agent |
+| WebSocket server | Listens on the configured port, tracks clients per session, routes messages |
+| Provider registry | Tracks connected providers such as the sidecar |
+| Feedback store | Persists feedback batches under `.debug-bridge/feedback` |
+| Browser commands | One-shot agent clients for `browser open`, `snapshot`, `click`, `wait`, and so on |
+| Output formatter and stdin handler | JSON mode for agents, REPL for humans |
 
-**CLI Modes:**
+### debug-bridge-browser (optional embedded SDK)
 
-| Mode | Purpose | Output Format |
-|------|---------|---------------|
-| JSON | Agent consumption (Claude Code) | JSONL to stdout, JSON from stdin |
-| Human | Interactive debugging | Formatted text, REPL prompt |
-
----
-
-### @debug-bridge/browser
-
-Browser SDK that embeds in web applications.
+Browser SDK that embeds in web applications. Not needed for the sidecar flow. The package also contains the Design Mode runtime that the sidecar injects into pages (`packages/browser/src/runtime/design-mode-runtime.ts`).
 
 | Component | Responsibility |
 |-----------|----------------|
@@ -143,9 +124,47 @@ Browser SDK that embeds in web applications.
 
 ---
 
-## Data Flow
+## Monorepo Structure
 
-### Telemetry Flow (App → Agent)
+```
+agent-bridge/
+├── packages/
+│   ├── types/            debug-bridge-types
+│   ├── cli/              debug-bridge-cli
+│   ├── browser-sidecar/  debug-bridge-browser-sidecar
+│   ├── browser/          debug-bridge-browser (SDK + Design Mode runtime)
+│   ├── feedback-mcp/     debug-bridge-feedback-mcp
+│   └── skill/            debug-bridge-skill
+├── apps/
+│   └── sample-react-app/ Test application
+├── skills/               Installable agent skills (debug-bridge, test-design-mode, agentic-e2e-test)
+├── scripts/              Validation and test scripts
+├── docs/                 These documents
+├── .claude-plugin/       Claude Code plugin and marketplace metadata
+├── spec.md               Protocol specification
+└── prd.md                Product requirements
+```
+
+## Technology Choices
+
+| Component | Technology | Rationale |
+|-----------|------------|-----------|
+| Monorepo | pnpm + Turborepo | Fast installs, efficient caching |
+| Language | TypeScript | Type safety across packages |
+| Bridge server | ws (WebSocket) | Lightweight, no framework overhead |
+| CLI parser | commander | Standard Node.js CLI tooling |
+| Browser control | Playwright over CDP | Real Chrome, no app instrumentation |
+| Browser SDK | Vanilla TS | Zero dependencies, minimal bundle |
+| Test app | React + Vite | Fast development iteration |
+| Build | tsup | Fast, zero-config TypeScript builds |
+
+## Embedded SDK internals (optional path)
+
+Applies only when an app uses `debug-bridge-browser`.
+
+### Data flow
+
+#### Telemetry flow (App → Agent)
 
 ```
 ┌─────────────┐         ┌─────────────┐         ┌─────────────┐
@@ -173,7 +192,7 @@ Browser SDK that embeds in web applications.
        │                       │                       │
 ```
 
-### Command Flow (Agent → App)
+#### Command flow (Agent → App)
 
 ```
 ┌─────────────┐         ┌─────────────┐         ┌─────────────┐
@@ -199,7 +218,7 @@ Browser SDK that embeds in web applications.
 
 ---
 
-## Connection Lifecycle
+### Connection lifecycle
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -231,7 +250,7 @@ Browser SDK that embeds in web applications.
 
 ---
 
-## UI Tree Structure
+### UI tree structure
 
 The UI Tree is a distilled view of interactive elements, optimized for agent reasoning.
 
@@ -261,60 +280,3 @@ The UI Tree is a distilled view of interactive elements, optimized for agent rea
 ```
 
 ---
-
-## Monorepo Structure
-
-```
-agent-bridge/
-├── packages/
-│   ├── types/              @debug-bridge/types
-│   ├── cli/                @debug-bridge/cli
-│   └── browser/            @debug-bridge/browser
-├── apps/
-│   └── sample-react-app/   Test application
-├── docs/
-│   └── architecture.md     This document
-├── .claude/
-│   └── skills/
-│       └── debug-bridge.md CLI reference for agents
-├── package.json            Root workspace config
-├── pnpm-workspace.yaml     pnpm workspace definition
-├── turbo.json              Turborepo build config
-├── tsconfig.base.json      Shared TypeScript config
-├── spec.md                 Protocol specification
-└── prd.md                  Product requirements
-```
-
----
-
-## Build Dependencies
-
-```
-                 @debug-bridge/types
-                         │
-          ┌──────────────┴──────────────┐
-          │                             │
-          ▼                             ▼
-   @debug-bridge/cli           @debug-bridge/browser
-          │                             │
-          │                             │
-          └──────────────┬──────────────┘
-                         │
-                         ▼
-               sample-react-app
-```
-
----
-
-## Technology Choices
-
-| Component | Technology | Rationale |
-|-----------|------------|-----------|
-| Monorepo | pnpm + Turborepo | Fast installs, efficient caching |
-| Language | TypeScript | Type safety across packages |
-| CLI Server | ws (WebSocket) | Lightweight, no framework overhead |
-| CLI Parser | commander | Standard Node.js CLI tooling |
-| Browser SDK | Vanilla TS | Zero dependencies, minimal bundle |
-| Test App | React + Vite | Fast development iteration |
-| State | Zustand | Simple, easy to expose to bridge |
-| Build | tsup | Fast, zero-config TypeScript builds |

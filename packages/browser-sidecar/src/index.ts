@@ -82,7 +82,11 @@ export function createBrowserSidecar(options: BrowserSidecarOptions): BrowserSid
           });
         },
         onMessage: async (msg) => {
-          if (isBrowserCommand(msg)) {
+          // connection_event is server-originated and not part of BridgeMessage
+          const event = msg as unknown as { type: string; connectedListeners?: unknown };
+          if (event.type === 'connection_event' && typeof event.connectedListeners === 'number') {
+            await provider?.setAgentListening(event.connectedListeners > 0);
+          } else if (isBrowserCommand(msg)) {
             await provider?.execute(msg);
           }
         },

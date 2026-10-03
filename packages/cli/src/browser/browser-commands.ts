@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { Command } from 'commander';
+import { Command, InvalidArgumentError } from 'commander';
+import { WebSocket } from 'ws';
 import { sendBrowserCommand } from './browser-client';
 import { startServer } from '../server/websocket-server';
 import { createBrowserSidecar } from 'debug-bridge-browser-sidecar';
@@ -251,7 +252,8 @@ export function registerBrowserCommands(program: Command): void {
       | 'clear_selections'
       | 'set_tool'
       | 'clear_marks'
-      | 'set_tmux_target' = 'status';
+      | 'set_tmux_target'
+      | 'set_agent_status' = 'status';
 
     let tool = opts.tool;
     if ((action === 'tool' || action === 'set-tool') && subArg) {
@@ -269,6 +271,7 @@ export function registerBrowserCommands(program: Command): void {
     else if (action === 'clear-preview') act = 'clear_preview';
     else if (action === 'tool' || action === 'set-tool' || tool) act = 'set_tool';
     else if (action === 'set-tmux' || action === 'tmux' || action === 'set_tmux_target') act = 'set_tmux_target';
+    else if (action === 'done' || action === 'error' || action === 'working' || action === 'idle') act = 'set_agent_status';
 
     const tmuxTarget =
       opts.tmux === false || opts.tmux === 'none'
@@ -286,6 +289,8 @@ export function registerBrowserCommands(program: Command): void {
         cssPatch: opts.css,
         tmuxTarget: act === 'set_tmux_target' ? tmuxTarget : (opts.tmux !== undefined ? tmuxTarget : undefined),
         tmuxAutoEnter: opts.tmuxEnter !== false,
+        agentStatus: act === 'set_agent_status' ? (action as 'done' | 'error' | 'working' | 'idle') : undefined,
+        statusMessage: act === 'set_agent_status' ? subArg || opts.request || undefined : undefined,
       },
       { port, session: opts.session }
     );
@@ -330,7 +335,7 @@ export function registerBrowserCommands(program: Command): void {
 
   browserCmd
     .command('design-mode [action] [subArg]')
-    .description('Control in-browser Design Mode (enable, disable, status, handoff, quick-render, copy-prompt, clear)')
+    .description('Control in-browser Design Mode (enable, disable, status, handoff, quick-render, copy-prompt, clear, done, error, working, idle)')
     .option('-r, --request <text>', 'Requested change description for handoff or prompt', '')
     .option('-t, --tool <tool>', 'Active tool (select, pen, rect, arrow, region, interact)')
     .option('--css <string>', 'Optional custom CSS patch for quick-render')
@@ -385,5 +390,65 @@ export function registerBrowserCommands(program: Command): void {
         if (opts.clear) console.log('Cleared live preview patch.');
         else console.log(`Injected live preview CSS (${opts.css?.length ?? 0} bytes) into browser.`);
       }
+    });
+
+  // Agent inbox: block until the Design Mode dock sends a change request, print it, exit.
+  // Exit codes: 0 = request received, 1 = timeout, 2 = bridge unreachable or closed, 64 = bad arguments.
+  // ponytail: single-shot, a submit landing between exit and re-arm is missed; persist submits server-side if that bites.
+  browserCmd
+    .command('wait')
+    .description('Block until Design Mode submits a change request, then print it and exit')
+    .option('-p, --port <number>', 'Bridge port', '4000')
+    .option('-s, --session <string>', 'Session ID', 'default')
+    .option('--host <host>', 'Bridge host', 'localhost')
+    .option('--timeout <ms>', 'Give up after this many ms (max 2147483647)', (v: string) => {
+      // setTimeout fires at once on NaN or > 2^31-1, which would make the wait loop spin
+      if (!/^\d+$/.test(v) || Number(v) < 1 || Number(v) > 2_147_483_647) {
+        throw new InvalidArgumentError('must be whole milliseconds between 1 and 2147483647');
+      }
+      return Number(v);
+    }, 1_800_000)
+    .option('--json', 'Output raw submit message as JSON', false)
+    // Usage errors exit 64, not 1: 1 means "timed out, re-arm", and a bad flag would make that loop spin
+    .exitOverride((err) => process.exit(err.code === 'commander.helpDisplayed' ? 0 : 64))
+    .action((opts) => {
+      const url = `ws://${opts.host}:${parseInt(opts.port, 10)}/debug?role=agent&listener=1&sessionId=${encodeURIComponent(opts.session)}`;
+      const ws = new WebSocket(url);
+      const timer = setTimeout(() => {
+        console.error(`TIMEOUT: no Design Mode request after ${opts.timeout}ms`);
+        process.exit(1);
+      }, opts.timeout);
+      const fail = (why: string) => {
+        clearTimeout(timer);
+        console.error(`BRIDGE DOWN: ${why} (${url})`);
+        process.exit(2);
+      };
+      ws.on('error', (err) => fail(err.message || (err as NodeJS.ErrnoException).code || 'connect failed'));
+      ws.on('close', () => fail('connection closed'));
+      ws.on('open', () => console.error(`Waiting for Design Mode request on session "${opts.session}"...`));
+      ws.on('message', (raw) => {
+        let msg: { type?: string; url?: string; prompt?: string; requestedChange?: string; artifacts?: Record<string, unknown> };
+        try {
+          msg = JSON.parse(raw.toString());
+        } catch {
+          return;
+        }
+        if (msg.type !== 'browser_design_mode_submit') return;
+        clearTimeout(timer);
+        ws.removeAllListeners('close');
+        ws.close();
+        if (opts.json) {
+          console.log(JSON.stringify(msg, null, 2));
+        } else {
+          console.log('DESIGN MODE REQUEST');
+          console.log(`Change:  ${msg.requestedChange || '(none typed)'}`);
+          console.log(`Page:    ${msg.url}`);
+          for (const [k, v] of Object.entries(msg.artifacts || {})) console.log(`${k}: ${Array.isArray(v) ? v.join(', ') : v}`);
+          console.log(`\nPrompt:\n${msg.prompt}`);
+        }
+        // No process.exit: stdout to a pipe is async and a long prompt would be cut off.
+        // The timer is cleared and the socket closed, so the process exits once output drains.
+        process.exitCode = 0;
+      });
     });
 }

@@ -1,6 +1,6 @@
 # debug-bridge-types
 
-TypeScript types and protocol definitions for debug-bridge.
+TypeScript types and protocol definitions for debug-bridge (shared by the CLI, sidecar, SDK, and feedback MCP server).
 
 ## Installation
 
@@ -53,6 +53,15 @@ interface CliConfig {
   host: string;
   session: string;
   json: boolean;
+  cdp?: boolean;
+  browser?: 'managed' | 'connect' | 'none';
+  cdpEndpoint?: string;
+  profile?: string;
+  storageState?: string;
+  headless?: boolean;
+  channel?: string;
+  feedbackDir?: string;
+  feedbackArtifacts?: boolean;
 }
 ```
 
@@ -127,10 +136,15 @@ type BridgeMessage =
   | ScreenshotMessage;
 ```
 
+### Sidecar and Design Mode messages
+
+Browser sidecar commands (`browser_navigate`, `browser_interactive_snapshot`, `browser_click`, `browser_fill`, `browser_screenshot`, `browser_preview_patch`, `browser_design_mode`, and others) and the `browser_design_mode_submit` message sent when the dock's Send fires are defined in `src/messages/browser.ts`. Feedback batch messages are in `src/messages/feedback.ts`, Design Mode messages in `src/messages/design-mode.ts`.
+
 ## Constants
 
 ```typescript
 const PROTOCOL_VERSION = 1;
+const DEFAULT_PORT = 4000;
 ```
 
 ## License

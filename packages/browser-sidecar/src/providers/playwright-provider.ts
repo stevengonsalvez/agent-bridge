@@ -63,6 +63,9 @@ export class PlaywrightProvider {
   private readonly networkRequests = new Map<string, NetworkRequestState>();
   private tmuxTarget?: string;
   private tmuxAutoEnter: boolean = true;
+  private agentListening = false;
+  // Tab whose dock last pressed Send; `design-mode done` reports back to it, not the selected tab
+  private lastSubmitTargetId: string | null = null;
 
   constructor(private readonly options: PlaywrightProviderOptions) {
     this.tmuxTarget = options.tmuxTarget;
@@ -170,6 +173,24 @@ export class PlaywrightProvider {
         },
         duration: Date.now() - started,
       });
+    }
+  }
+
+  /** Drive the dock's "Agent Ready" / "Offline" pill from whether an agent is parked on `browser wait`. */
+  async setAgentListening(listening: boolean): Promise<void> {
+    if (listening === this.agentListening) return; // new pages get it from autoEnableDesignMode
+    this.agentListening = listening;
+    await Promise.all([...this.targets.values()].map((target) => this.pushAgentListening(target.page)));
+  }
+
+  private async pushAgentListening(page: Page): Promise<void> {
+    try {
+      await page.evaluate((listening) => {
+        const api = (window as unknown as { __agentBridgeDesignMode?: { setAgentListening?: (l: boolean) => void } }).__agentBridgeDesignMode;
+        api?.setAgentListening?.(listening);
+      }, this.agentListening);
+    } catch {
+      // Ignore navigation or closed page
     }
   }
 
@@ -438,6 +459,14 @@ export class PlaywrightProvider {
             tmuxTarget: this.tmuxTarget,
             tmuxAutoEnter: this.tmuxAutoEnter,
           };
+        } else if (command.action === 'set_agent_status') {
+          const payload = { status: command.agentStatus ?? 'done', message: command.statusMessage };
+          const statusTarget = (this.lastSubmitTargetId && this.targets.get(this.lastSubmitTargetId)) || target;
+          await statusTarget.page.evaluate((p) => {
+            const api = (window as unknown as { __agentBridgeDesignMode?: { setAgentStatus?: (s: typeof p) => unknown } }).__agentBridgeDesignMode;
+            api?.setAgentStatus?.(p);
+          }, payload);
+          return payload;
         } else if (command.action === 'set_tmux_target') {
           if (command.tmuxTarget !== undefined) {
             this.tmuxTarget = command.tmuxTarget;
@@ -542,6 +571,7 @@ export class PlaywrightProvider {
     try {
       await page.exposeFunction('__agentBridgeHost', async (msg: { type: string; payload?: Record<string, unknown> }) => {
         if (msg?.type === 'design_mode_handoff') {
+          this.lastSubmitTargetId = target.id;
           const change = typeof msg.payload?.requested_change === 'string' ? msg.payload.requested_change : undefined;
           const artifacts = await this.generateDesignModeArtifacts(target, change);
 
@@ -580,6 +610,11 @@ export class PlaywrightProvider {
             artifacts,
             terminalInjection: injection,
           };
+        }
+        if (msg?.type === 'design_mode_copy') {
+          // Copy only: write artifacts so the copied prompt can reference them, but don't inject or wake agents
+          const change = typeof msg.payload?.requested_change === 'string' ? msg.payload.requested_change : undefined;
+          return { success: true, artifacts: await this.generateDesignModeArtifacts(target, change) };
         }
         return { success: false, error: 'Unknown message type' };
       });
@@ -725,12 +760,27 @@ export class PlaywrightProvider {
         const api = (window as unknown as { __agentBridgeDesignMode?: { enable?: () => unknown } }).__agentBridgeDesignMode;
         api?.enable?.();
       });
+      await this.pushAgentListening(page);
     } catch {
       // Ignore navigation or closed page
     }
   }
 
-  private async generateDesignModeArtifacts(
+  private async generateDesignModeArtifacts(target: TargetState, requestedChange?: string) {
+    try {
+      return await this.captureDesignModeArtifacts(target, requestedChange);
+    } finally {
+      // Capture hides the dock; never leave it hidden if a screenshot throws
+      await target.page
+        .evaluate(() => {
+          const api = (window as unknown as { __agentBridgeDesignMode?: { setCaptureHidden?: (m: string) => void } }).__agentBridgeDesignMode;
+          api?.setCaptureHidden?.('none');
+        })
+        .catch(() => {});
+    }
+  }
+
+  private async captureDesignModeArtifacts(
     target: TargetState,
     requestedChange?: string
   ): Promise<{
@@ -792,7 +842,9 @@ export class PlaywrightProvider {
           width: Math.max(1, Math.round(sel.bounds.width)),
           height: Math.max(1, Math.round(sel.bounds.height)),
         };
-        await target.page.screenshot({ clip, path: elPath });
+        // Stale bounds can fall outside the viewport; skip that crop rather than fail the handoff
+        const ok = await target.page.screenshot({ clip, path: elPath }).then(() => true, () => false);
+        if (!ok) continue;
       }
       elementPaths.push(elPath);
       sel.screenshot_path = elPath;

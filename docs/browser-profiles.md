@@ -1,6 +1,6 @@
 # Browser Profiles and CDP Sidecar
 
-Agent Bridge can compose the in-page app bridge with a CDP browser sidecar. The sidecar is optional and is enabled from the CLI:
+How-to for choosing where the managed browser keeps its state. The CDP sidecar is the default way to use Debug Bridge, and it needs no changes in your app. `debug-bridge browser open` starts it for you; with `connect` it is enabled with `--cdp`:
 
 ```bash
 debug-bridge connect --cdp --profile agent-bridge-default
@@ -10,13 +10,13 @@ debug-bridge connect --cdp --profile agent-bridge-default
 
 ### Dedicated persistent profile
 
-The default recommended mode is a named Agent Bridge profile:
+The default recommended mode is a named Agent Bridge profile, stored at `~/.agent-bridge/profiles/<name>`:
 
 ```bash
 debug-bridge connect --cdp --profile agent-bridge-default
 ```
 
-The sidecar launches Chromium with a persistent user data directory. Cookies, localStorage, IndexedDB, service workers, and cache can survive restarts. This is the safest local mode because it does not mutate the user's everyday Chrome profile.
+The sidecar launches Chrome (or Chromium as fallback) with a persistent user data directory. Cookies, localStorage, IndexedDB, service workers, and cache can survive restarts. This is the safest local mode because it does not mutate the user's everyday Chrome profile.
 
 ### Absolute profile path
 
@@ -40,10 +40,18 @@ The sidecar imports the file when the browser starts and writes it back when the
 
 ### Existing Chrome profile
 
-Attaching to an already-open normal Chrome tab is not part of the first sidecar slice. A Node sidecar needs either:
+To use a Chrome you already run, start it with a remote debugging endpoint and a dedicated `--user-data-dir`, then attach:
 
-- Chrome launched with a remote debugging endpoint and a selected `--user-data-dir`, or
-- a future Chrome extension relay installed in the user's normal browser.
+```bash
+# macOS example: start Chrome with a debugging port and its own data directory
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --remote-debugging-port=9222 --user-data-dir=/tmp/agent-bridge-chrome
+
+# then attach the bridge to it
+debug-bridge connect --cdp --browser connect --cdp-endpoint http://localhost:9222
+```
+
+A Chrome extension relay for an unmodified everyday browser does not exist yet.
 
 Avoid pointing the sidecar directly at the everyday Chrome profile while Chrome is running. Chrome profile locking and mixed ownership can corrupt state or produce confusing behavior.
 
@@ -52,5 +60,5 @@ Avoid pointing the sidecar directly at the everyday Chrome profile while Chrome 
 - Cookie values are redacted by default in `browser_get_cookies`.
 - `cookie`, `set-cookie`, and `authorization` headers are redacted from CDP network telemetry.
 - Raw CDP is available through `cdp_send`, but higher-level browser commands should be preferred.
-- The in-page `eval` capability remains controlled by the app bridge config and is not enabled by the sidecar.
+- The in-page `eval` capability belongs to the optional embedded SDK, is controlled by its `enableEval` option, and is not enabled by the sidecar.
 

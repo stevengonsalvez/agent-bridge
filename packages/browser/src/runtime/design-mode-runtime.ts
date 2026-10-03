@@ -6,7 +6,7 @@
  * and structured artifact clipboard handoff.
  */
 
-import { resolvePromptToCss } from './quick-render-jev';
+import { resolveGatewayKey, resolvePromptToCss } from './quick-render-jev';
 import html2canvas from 'html2canvas-pro';
 
 (() => {
@@ -94,6 +94,8 @@ import html2canvas from 'html2canvas-pro';
   let isPromptBarCollapsed = false;
   let lastRenderedVertical: boolean | null = null;
   let bridgeConnected = false;
+  // Set by the CDP sidecar while an agent is parked on `debug-bridge browser wait`
+  let agentListening = false;
   let currentAgentStatus: {
     status: 'idle' | 'working' | 'done' | 'error';
     message?: string;
@@ -479,8 +481,18 @@ import html2canvas from 'html2canvas-pro';
     const selIndex = activeElement ? selections.findIndex((s) => s.element === activeElement) : (selections.length ? selections.length - 1 : -1);
     const activeSel = selIndex >= 0 ? selections[selIndex] : null;
 
+    // Same lookup AI Render uses, so the badge can't disagree with what a render will do
+    const renderAiKeyBadge = () => {
+      const key = resolveGatewayKey();
+      if (!key) {
+        return `<span class="ai-key-badge ai-key-missing" data-ai-key="missing" title="No TypeSafe or Vercel AI Gateway key found. AI Render falls back to heuristic CSS. Paste a key in the ? panel to enable it.">⚠ No key</span>`;
+      }
+      const kind = key.startsWith('vck_') ? 'Vercel AI Gateway' : 'TypeSafe';
+      return `<span class="ai-key-badge ai-key-ok" data-ai-key="ok" title="${kind} key detected (…${escapeHtml(key.slice(-4))})"></span>`;
+    };
+
     const renderAgentStatusPill = (extraClass = '') => {
-      const isOnline = isBridgeConnected();
+      const isOnline = agentListening || isBridgeConnected();
       if (currentAgentStatus.status === 'working') {
         return `
           <div class="agent-status-pill ${extraClass} status-working" title="${escapeHtml(currentAgentStatus.message || 'Agent working on feedback...')}">
@@ -665,6 +677,25 @@ import html2canvas from 'html2canvas-pro';
         .btn-quick-render:hover { background: #1d4ed8; }
 
         /* Quick Render AI & Manual item wraps and buttons */
+        .ai-key-badge.ai-key-missing {
+          font-size: 10px;
+          font-weight: 700;
+          color: #fbbf24;
+          background: rgba(251, 191, 36, 0.12);
+          border: 1px solid rgba(251, 191, 36, 0.35);
+          border-radius: 9999px;
+          padding: 1px 6px;
+          white-space: nowrap;
+          cursor: help;
+        }
+        .ai-key-badge.ai-key-ok {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: #4ade80;
+          margin: 0 2px;
+          cursor: help;
+        }
         .render-item-wrap {
           display: inline-flex;
           align-items: center;
@@ -1849,6 +1880,7 @@ import html2canvas from 'html2canvas-pro';
             <button class="btn-action btn-quick-render btn-quick-render-ai" data-action="quick-render" data-action-ai="quick-render-ai" title="Quick Render (AI) with Jev">
               ⚡ AI Render
             </button>
+            ${renderAiKeyBadge()}
             <button class="help-question-btn ${activeInfo === 'ai' ? 'active' : ''}" data-action="toggle-info-ai" title="How Quick Render (AI) works with Jev">?</button>
           </div>
 
@@ -2143,7 +2175,7 @@ import html2canvas from 'html2canvas-pro';
       }
 
       // 2. Generate screenshot artifacts, inject terminal, and copy prompt
-      const handoff = await copyHandoffToClipboard(currentPromptText);
+      const handoff = await copyHandoffToClipboard(currentPromptText, true);
 
       const currentSubmitBtns = shadowRoot?.querySelectorAll<HTMLButtonElement>('[data-action="submit-batch"], [data-action="submit"]') || [];
       currentSubmitBtns.forEach((btn) => {
@@ -2435,7 +2467,7 @@ import html2canvas from 'html2canvas-pro';
     const copyBtn = shadowRoot.querySelector<HTMLButtonElement>('[data-action="copy-prompt"]');
     if (copyBtn) {
       copyBtn.addEventListener('click', async () => {
-        const ok = await copyHandoffToClipboard(currentPromptText);
+        const ok = (await copyHandoffToClipboard(currentPromptText)).clipboardOk;
         copyBtn.innerHTML = ok ? '✓' : '!';
         copyBtn.style.color = ok ? '#4ade80' : '#f87171';
         setTimeout(() => {
@@ -3143,7 +3175,8 @@ import html2canvas from 'html2canvas-pro';
     terminalError?: string;
   };
 
-  const copyHandoffToClipboard = async (requestedChange?: string): Promise<HandoffResult> => {
+  // submit=true is Send: the host injects into the terminal and wakes `browser wait`. Copy buttons only copy.
+  const copyHandoffToClipboard = async (requestedChange?: string, submit = false): Promise<HandoffResult> => {
     const promptText = (requestedChange || currentPromptText).trim() || 'Design-mode context for the selected page elements.';
 
     // Ensure crops are captured for selections and region marks
@@ -3157,23 +3190,25 @@ import html2canvas from 'html2canvas-pro';
     const payload = getHandoffPayload(promptText);
 
     // Notify host or agent bridge
-    window.dispatchEvent(new CustomEvent('agent-bridge:handoff', { detail: payload }));
+    if (submit) window.dispatchEvent(new CustomEvent('agent-bridge:handoff', { detail: payload }));
     type HostHandoffResult = {
       success?: boolean;
+      artifacts?: { prompt?: string };
       terminalInjection?: { success: boolean; method: string; target?: string; error?: string };
     };
     let hostResult: HostHandoffResult | null = null;
     const host = (window as unknown as { __agentBridgeHost?: (msg: unknown) => Promise<unknown> | void }).__agentBridgeHost;
     if (typeof host === 'function') {
       try {
-        const res = await host({ type: 'design_mode_handoff', payload });
+        const res = await host({ type: submit ? 'design_mode_handoff' : 'design_mode_copy', payload });
         if (res && typeof res === 'object') {
           hostResult = res as HostHandoffResult;
         }
       } catch {}
     }
 
-    const text = getFormattedPrompt(promptText);
+    // Prefer the host's prompt: it references the screenshot artifacts it just wrote
+    const text = hostResult?.artifacts?.prompt || getFormattedPrompt(promptText);
     let ok = false;
     try {
       if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
@@ -3490,6 +3525,27 @@ import html2canvas from 'html2canvas-pro';
       return getStoredGatewayKey();
     },
     getGatewayKey: () => getStoredGatewayKey(),
+    setAgentListening: (listening: boolean) => {
+      // Every agent connect/disconnect pushes this; re-rendering on a no-op wipes half-typed dock inputs
+      if (agentListening === listening) return getSnapshot();
+      agentListening = listening;
+      // Patch the pill in place: renderOverlay rebuilds the dock, dropping focus and unsaved input,
+      // and this flips on every request as `browser wait` exits and re-arms.
+      // Only the idle pill depends on listening; working/done/error ignore it.
+      if (currentAgentStatus.status === 'idle') {
+        const online = agentListening || isBridgeConnected();
+        shadowRoot?.querySelectorAll<HTMLElement>('.agent-status-pill').forEach((pill) => {
+          pill.classList.toggle('status-ready', online);
+          pill.classList.toggle('status-offline', !online);
+          pill.title = online ? 'Agent bridge online. Ready for browser feedback.' : 'Bridge offline. Prompts will copy to clipboard.';
+          const dot = pill.querySelector<HTMLElement>('.status-dot');
+          if (dot) dot.className = `status-dot ${online ? 'status-dot-ready' : 'status-dot-offline'}`;
+          const text = pill.querySelector<HTMLElement>('.status-text');
+          if (text) text.textContent = online ? 'Agent Ready' : 'Offline (Copy)';
+        });
+      }
+      return getSnapshot();
+    },
     setBridgeConnected: (connected: boolean) => {
       bridgeConnected = connected;
       renderOverlay();

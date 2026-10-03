@@ -1,4 +1,6 @@
-# CDP Sidecar Demo Validation
+# Validate the CDP sidecar end to end
+
+How-to for contributors who want to check that the sidecar, sample app, and profile persistence still work together. The sample app uses the optional embedded SDK, so these checks cover both paths.
 
 Run the normal build gates first:
 
@@ -13,7 +15,7 @@ Or run the full repeatable test path:
 pnpm test
 ```
 
-Start the sample React app in a tmux session:
+Start the sample React app in a tmux session (see [apps/sample-react-app/README.md](../apps/sample-react-app/README.md)):
 
 ```bash
 PORT=9090 pnpm --filter sample-react-app dev --host 127.0.0.1 --port 9090
@@ -38,4 +40,10 @@ For a CLI smoke test of the sidecar path itself:
 
 ```bash
 debug-bridge connect --cdp --profile agent-bridge-default --json
+```
+
+`connect` holds its terminal, so run this second command in another terminal:
+
+```bash
+debug-bridge browser open "http://localhost:9090" --port 4000
 ```

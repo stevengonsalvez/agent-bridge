@@ -1,21 +1,30 @@
 # debug-bridge-skill
 
-CLI installer and npm package for the Debug Bridge AI agent skill. Compatible with Claude Code, Google Antigravity / Gemini CLI, Cursor, Codex, and OpenCode.
+Installer package for the Debug Bridge AI agent skill (not yet published). Compatible with Claude Code, Google Antigravity / Gemini CLI, Cursor, Codex, and OpenCode.
 
-## Quick Start
+## Status: not published to npm
 
-Install the Debug Bridge skill to all detected AI agent environments on your system:
+`npm view debug-bridge-skill` returns 404, so `npx debug-bridge-skill` and `npm install -g debug-bridge-skill` do not work today. The commands in the sections below describe this package's CLI and apply only after it is published, or when you run it from a repo build (`node packages/skill/dist/bin/cli.js`).
 
-```bash
-npx debug-bridge-skill
-```
+## Quick Start (works today)
 
-Or install globally:
+Install the skill from the repo with the [`skills`](https://www.npmjs.com/package/skills) CLI:
 
 ```bash
-npm install -g debug-bridge-skill
-debug-bridge-skill
+# Global: installs into ~/.agents/skills/debug-bridge and links agents as needed
+npx skills add stevengonsalvez/agent-bridge --skill debug-bridge -g -y
+
+# Current project only
+npx skills add stevengonsalvez/agent-bridge --skill debug-bridge -y
 ```
+
+This installs `skills/debug-bridge/SKILL.md` from `master`. Re-run to update.
+
+## What the skill does
+
+It teaches the agent to run the Debug Bridge sidecar and, on every run, arm the agent inbox (`debug-bridge browser wait`) so Design Mode requests from the dock wake the agent. See [docs/agent-loop.md](../../docs/agent-loop.md).
+
+> The installer reads `packages/skill/SKILL.md`, which is a separate copy that currently lags the source of truth, `skills/debug-bridge/SKILL.md` (it lacks the "arm the agent inbox" section). The `skills` CLI command above installs the source of truth.
 
 ## Supported AI Agent Environments
 
@@ -24,11 +33,11 @@ debug-bridge-skill
 | **Claude Code** | `~/.claude/skills/debug-bridge/SKILL.md` | `.claude/skills/debug-bridge/SKILL.md` |
 | **Antigravity / Gemini** | `~/.gemini/skills/debug-bridge/SKILL.md` | `.gemini/skills/debug-bridge/SKILL.md` |
 | **Cursor** | `~/.cursor/skills/debug-bridge/SKILL.md` | `.cursor/skills/debug-bridge/SKILL.md` |
-| **Codex** | `~/.codex/skills/debug-bridge/SKILL.md` | `.codex/skills/debug-bridge/SKILL.md` |
+| **Codex** | `~/.codex/skills/debug-bridge/SKILL.md` | - |
 | **Agents SDK** | `~/.agents/skills/debug-bridge/SKILL.md` | `.agents/skills/debug-bridge/SKILL.md` |
 | **GitHub Copilot** | - | `.github/skills/debug-bridge/SKILL.md` |
 
-## Usage & Options
+## Installer CLI options (after publish)
 
 ### Install Commands
 

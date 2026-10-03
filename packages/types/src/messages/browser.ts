@@ -152,8 +152,12 @@ export type BrowserDesignModeCommand = BrowserCommandBase & {
     | 'clear_selections'
     | 'set_tool'
     | 'clear_marks'
-    | 'set_tmux_target';
+    | 'set_tmux_target'
+    | 'set_agent_status';
   tool?: 'interact' | 'select' | 'pen' | 'rect' | 'arrow' | 'region';
+  /** For set_agent_status: drives the dock's status pill (Send sets 'working'; the agent reports back) */
+  agentStatus?: 'idle' | 'working' | 'done' | 'error';
+  statusMessage?: string;
   requestedChange?: string;
   cssPatch?: string;
   tmuxTarget?: string;

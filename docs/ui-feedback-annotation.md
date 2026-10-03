@@ -1,8 +1,17 @@
 # UI Feedback Annotation
 
-Agent Bridge can expose an SDK-present feedback overlay in development apps. It lets a developer select elements or regions, draw annotations, write comments, submit a multi-route batch, and receive agent visual suggestions back in the same live browser session.
+Reference for feedback batches, their artifacts and protocol messages, and the `debug-bridge-feedback-mcp` server. The capture surface is the [Design Mode dock](./design-mode-dock.md), which the sidecar shows on every page by default. The legacy top toolbar and right-hand panel no longer exist.
 
-## Enable
+Two ways to get the dock on a page:
+
+| Setup | How | Needs code changes |
+|-------|-----|--------------------|
+| Sidecar (default) | `debug-bridge browser open <url>` enables Design Mode automatically | No |
+| Embedded SDK (optional) | `createDebugBridge({ ..., feedback: { enabled: true } })` | Yes |
+
+For the sidecar flow, an agent receives requests with `debug-bridge browser wait` ([agent-loop](./agent-loop.md)). The rest of this page covers batches persisted through the bridge and the MCP server, which suit agents that prefer MCP tools.
+
+## Embedded SDK options
 
 ```ts
 createDebugBridge({
@@ -10,6 +19,7 @@ createDebugBridge({
   sessionId: 'default',
   feedback: {
     enabled: true,
+    launcher: false,
     shortcut: 'Mod+Shift+F',
     captureTelemetry: true,
     captureAppState: true,
@@ -18,31 +28,7 @@ createDebugBridge({
 });
 ```
 
-The overlay can be opened by:
-
-- `Mod+Shift+F`
-- bridge command `ui_feedback_enable`
-- CLI alias `feedback on`
-
-Use `feedback off` or bridge command `ui_feedback_disable` to hide it.
-
-## Workflow
-
-The default overlay renders:
-
-- top toolbar with select, region, rectangle, highlight, arrow, pen, text, undo, redo, clear, interact, and submit controls
-- right panel with `Batch`, `Context`, and `Thread` tabs
-- active batch pill when the panel is collapsed
-
-Drawing tools capture app clicks while active. `Interact` mode lets the developer navigate normally while keeping the current feedback batch active.
-
-The overlay is only the capture and review surface. A two-way agent workflow also needs an agent-side consumer connected to the same bridge session. The recommended product setup is:
-
-1. Start the app with the SDK feedback overlay enabled.
-2. Start `debug-bridge connect` so submitted batches are persisted and broadcast.
-3. Start `debug-bridge-feedback-mcp` so agents can watch feedback events and send suggestions through MCP tools.
-4. The user annotates the app and submits feedback.
-5. The coding agent calls MCP tools to read the batch, inspect artifacts, send a visual suggestion, and then apply code changes only after user approval.
+With `launcher: false` the SDK dock opens only through the shortcut (`Mod+Shift+F`) or the bridge commands below. Fields of `FeedbackConfig` (see `packages/types/src/config/index.ts`): `enabled`, `launcher`, `shortcut`, `maxImageBytes`, `maxImageDimension`, `captureTelemetry`, `captureAppState`, `captureSourceHints`. The overlay can also be shown or hidden with bridge commands `ui_feedback_enable` and `ui_feedback_disable`, or the REPL aliases `feedback on` and `feedback off`.
 
 ## Artifacts
 
@@ -85,12 +71,12 @@ Accepted suggestions are persisted as patch hints. The browser SDK does not auto
 
 ## MCP Server
 
-`debug-bridge-feedback-mcp` is the persistent watcher/API layer. It connects to the bridge as `role=agent`, exposes feedback artifacts as MCP resources, and provides tools for the coding agent.
+`debug-bridge-feedback-mcp` (a workspace package, not on npm; run its built binary from this repo) is the persistent watcher/API layer. It connects to the bridge as `role=agent`, exposes feedback artifacts as MCP resources, and provides tools for the coding agent.
 
 Example MCP command:
 
 ```bash
-debug-bridge-feedback-mcp \
+node packages/feedback-mcp/dist/bin/feedback-mcp.js \
   --bridge-port 4000 \
   --session default \
   --feedback-dir .debug-bridge/feedback
@@ -116,25 +102,22 @@ Tools:
 - `list_feedback_batches` lists persisted feedback artifacts.
 - `read_feedback_batch` reads a batch plus its summary.
 - `wait_for_feedback_batch` waits for the next submitted batch event.
-- `set_feedback_overlay` opens or closes the overlay in the app.
+- `wait_for_feedback_decision` waits for the user to accept, reject, or comment on a suggestion.
+- `set_feedback_overlay` shows or hides the feedback overlay in the connected app.
 - `send_visual_suggestion` renders an agent suggestion card and marks back in the live overlay.
+- `browser_open`, `browser_snapshot`, `browser_click`, `browser_fill` drive the managed browser sidecar.
+- `preview_code_fix` injects temporary CSS for instant review before editing files.
+- `design_mode_control` controls Design Mode.
 
-The user-facing instruction should be:
-
-```text
-Start UI feedback mode for this app, watch for my submissions, suggest fixes visually in the overlay, and apply accepted changes.
-```
-
-The skill or setup command should then start app + bridge + MCP server. The user should not need to know WebSocket URLs, batch IDs, or artifact paths.
+Options: `--bridge-host`, `--bridge-port`, `--session`, `--feedback-dir`, `--ws-url`.
 
 ## CLI
 
 ```bash
 debug-bridge connect --feedback-dir .debug-bridge/feedback
-debug-bridge connect --no-feedback-artifacts
 ```
 
-Manual testing aliases:
+REPL aliases for manual testing (`connect` prompt):
 
 ```text
 feedback on
@@ -150,4 +133,4 @@ pnpm run build
 pnpm test
 ```
 
-`pnpm test` runs the existing bridge validation, feedback annotation validation, feedback MCP validation, and CDP sidecar validation.
+`pnpm test` runs type-check, builds, then `scripts/run-demo-validations.mjs`: bridge, feedback annotation, feedback MCP (two scripts), and CDP sidecar validations.
