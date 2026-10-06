@@ -19,6 +19,7 @@ recordings/
 # Agent scratch state (local only)
 .agents/goals/
 .agents/handover/
+.agents/demo/
 .gemini/
 HANDOVER.md
 .codex/session/
