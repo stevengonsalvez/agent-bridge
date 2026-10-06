@@ -1,5 +1,7 @@
 # Debug Bridge
 
+[![Debug Bridge Demo](docs/assets/demo/debug-bridge-jev.gif)](https://github.com/stevengonsalvez/agent-bridge/releases/download/v0.3.2/debug-bridge-launch.mp4)
+
 Let an AI coding agent see, drive, and receive visual change requests from your web app, with no changes to the app.
 
 Debug Bridge launches a managed Chrome through a CDP sidecar, gives the agent numbered element handles (`@e1`, `@e2`), and shows a Design Mode dock on every page. You click elements, draw on the page, describe a change, and press **Send**. The request, with screenshots and the selected elements' DOM context, lands in the agent's session.
