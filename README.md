@@ -49,7 +49,66 @@ In a second terminal, block until the dock's **Send** fires:
 debug-bridge browser wait --port 4000
 ```
 
-Select an element in the browser, type a change in the dock, press **Send**. `wait` prints the request and exits `0`. After handling it, tell the dock you are finished with `debug-bridge browser design-mode done "Made the CTA larger" --port 4000 --session default`. See [docs/agent-loop.md](./docs/agent-loop.md) for how an agent runs this in a loop.
+Select an element in the browser, type a change in the dock, and press **Send**. `wait` prints the request, saves visual artifacts to disk, and exits `0`.
+
+#### What the Agent Receives
+
+When **Send** fires, Debug Bridge captures the prompt and packages both full-page and element-level artifacts:
+
+```text
+Waiting for Design Mode request on session "default"...
+
+DESIGN MODE REQUEST
+Change:  make hero illustration 3D glowing isometric
+Page:    http://localhost:5173
+clean_screenshot_path: /tmp/debug-bridge/demo-page-screenshot.png
+element_screenshot_paths: /tmp/debug-bridge/demo-element-image.png
+context_json_path: /tmp/debug-bridge/context.json
+
+Prompt:
+/tmp/debug-bridge/demo-element-image.png make hero illustration 3D glowing isometric
+
+Page: http://localhost:5173
+Details: /tmp/debug-bridge/context.json
+```
+
+#### Captured Visual Artifacts
+
+Debug Bridge generates targeted visual artifacts so multimodal agents inspect exact component pixels:
+
+| Artifact | Type | Description |
+|---|---|---|
+| `demo-element-image.png` | **Element Crop (Image Only)** | Sharp, focused screenshot of only the selected target element |
+| `demo-page-screenshot.png` | **Full Viewport** | Clean full-page screenshot without overlays |
+
+<p align="center">
+  <img src="docs/assets/demo/demo-element-image.png" alt="Element Screenshot (Image Only)" width="280" />
+  <br />
+  <em>Element Screenshot: isolated crop of only the target image element</em>
+</p>
+
+<p align="center">
+  <img src="docs/assets/demo/demo-page-screenshot.png" alt="Full Page Screenshot" width="600" />
+  <br />
+  <em>Full Page Screenshot: clean viewport reference</em>
+</p>
+
+#### Agent Inspection and Closing the Loop
+
+The agent opens the element screenshot, reads the context, applies the code change, and reports completion back to the dock:
+
+```bash
+# 1. Open and inspect the element screenshot
+open /tmp/debug-bridge/demo-element-image.png
+
+# 2. Re-arm the inbox before editing code so subsequent requests are not missed
+debug-bridge browser wait --port 4000 &
+
+# 3. Edit source files, verify with a screenshot, and report done
+debug-bridge browser design-mode done "Updated hero illustration" --port 4000 --session default
+```
+
+See [docs/agent-loop.md](./docs/agent-loop.md) for how an agent runs this in an autonomous loop.
 
 ## Documentation map
 
